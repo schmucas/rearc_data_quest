@@ -26,7 +26,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --group sourcing
+
       - uses: databricks/setup-cli@main
+
+      # First deploy to a brand-new environment fails otherwise: the
+      # declarative pipeline resource requires its target catalog to already
+      # exist, but that catalog is normally created by setup_job, which can't
+      # run until the bundle has been deployed once. Idempotent, safe on
+      # every deploy.
+      - name: Ensure target catalog exists
+        run: uv run python -m scripts.ensure_catalog --env prod
 
       - name: Deploy bundle (prod)
         run: databricks bundle deploy --target prod
