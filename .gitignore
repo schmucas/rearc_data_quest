@@ -1,0 +1,14 @@
+.DS_Store
+.vscode/
+.databricks/
+.claude/settings.local.json
+.envrc
+build/
+dist/
+__pycache__/
+*.egg-info
+.venv/
+scratch/**
+!scratch/README.md
+**/explorations/**
+**/!explorations/README.md

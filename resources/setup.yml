@@ -1,0 +1,27 @@
+# One-time environment setup.
+#
+# DESTRUCTIVE: environment_setup.ipynb drops and recreates <prefix>_<env> and
+# the ingest schema, so this job is never scheduled. Run it by hand:
+#   databricks bundle run setup_job --target dev
+#
+# It also drops a small JSON sample onto the landing volume so the Auto Loader
+# ingestion task has something to read on a fresh workspace. Delete that cell
+# once the project has a real source.
+
+resources:
+  jobs:
+    setup_job:
+      name: setup_job
+
+      parameters:
+        - name: env
+          default: ${var.env}
+        - name: catalog_prefix
+          default: ${var.catalog_prefix}
+        - name: seed_sample_data
+          default: "True"
+
+      tasks:
+        - task_key: environment_setup
+          notebook_task:
+            notebook_path: ../src/setup/environment_setup.ipynb

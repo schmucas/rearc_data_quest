@@ -1,0 +1,56 @@
+# Declarative (Lakeflow) silver + gold pipeline.
+#
+# One pipeline covers both layers and resolves silver -> gold ordering itself,
+# so there is no hand-declared depends_on graph here.
+#
+# Naming rule in src/: bare dataset names resolve against `schema:` below, so
+# silver datasets are bare and anything outside silver (bronze sources, gold
+# targets) is fully qualified. Changing `schema` therefore moves the silver layer.
+#
+# Pipelines have no widgets: source files read `env` and `catalog_prefix` with
+# spark.conf.get(), which is why both are restated in `configuration` below.
+
+resources:
+  pipelines:
+    declarative_silver_gold_pipeline:
+      name: declarative_silver_gold
+      catalog: ${var.catalog_prefix}_${var.env}
+      # default target for unqualified dataset names, which is the silver layer
+      schema: silver
+      serverless: true
+      continuous: false
+
+      configuration:
+        env: ${var.env}
+        catalog_prefix: ${var.catalog_prefix}
+
+      libraries:
+        - glob:
+            include: ../src/silver/**
+        - glob:
+            include: ../src/gold/**
+
+      # No `environment.dependencies` block: nothing outside the pipeline is
+      # imported. Add one here if source files start importing a utils wheel.
+
+  jobs:
+    declarative_pipeline_silver_gold:
+      name: declarative_pipeline_silver_gold
+
+      parameters:
+        - name: env
+          default: ${var.env}
+        - name: catalog_prefix
+          default: ${var.catalog_prefix}
+
+      tasks:
+        # Uncomment to make this the full end-to-end run (bronze, then silver+gold):
+        # - task_key: run_bronze_ingestion
+        #   run_job_task:
+        #     job_id: ${resources.jobs.bronze_ingestion_job.id}
+
+        - task_key: refresh_declarative_pipeline
+          # depends_on:
+          #   - task_key: run_bronze_ingestion
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.declarative_silver_gold_pipeline.id}

@@ -1,0 +1,32 @@
+# Bronze ingestion job: raw source -> <prefix>_<env>.bronze.
+#
+# Two tasks, one per ingestion pattern, running in parallel because they touch
+# different targets. Keep the one your source needs and delete the other:
+#
+#   autoloader_json  - files landing on a UC volume, incremental via Auto Loader
+#   delta_cdf        - an upstream Delta table, incremental via its change feed
+#
+# `initial_run=True` applies the one-time table properties (clustering,
+# log retention). Leave it False on scheduled runs.
+
+resources:
+  jobs:
+    bronze_ingestion_job:
+      name: bronze_ingestion
+
+      parameters:
+        - name: env
+          default: ${var.env}
+        - name: catalog_prefix
+          default: ${var.catalog_prefix}
+        - name: initial_run
+          default: "False"
+
+      tasks:
+        - task_key: autoloader_json
+          notebook_task:
+            notebook_path: ../src/ingestion/autoloader_json.ipynb
+
+        - task_key: delta_cdf
+          notebook_task:
+            notebook_path: ../src/ingestion/delta_cdf.ipynb

@@ -1,0 +1,38 @@
+[project]
+name = "rearc_data_quest"
+version = "0.0.1"
+authors = [{ name = "lucazwicky" }]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    # Runtime dependencies for JOB tasks go here.
+    # LIMITATION: pipeline dependencies are cached during development; declare
+    # those in the pipeline's `environment` block in resources/ instead.
+    # See https://docs.databricks.com/dev-tools/bundles/library-dependencies
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pyyaml",           # bundle guardrail tests parse databricks.yml / resources/
+    "ruff",
+    "databricks-dlt",
+    "databricks-connect>=15.4,<15.5",
+    "ipykernel",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+builtins = ["spark", "dbutils", "display", "sc", "table"]
+
+[tool.ruff.lint]
+# Explicit rather than inherited: ruff's default rule set changes between
+# releases, and a template should enforce the same thing next year.
+# E/F = pycodestyle + pyflakes (ruff's classic default), I = import sorting.
+select = ["E4", "E7", "E9", "F", "I"]
+# F403/F405: notebooks use `from pyspark.sql.functions import *`.
+# E712: PySpark Column comparisons (F.col(...) == False) are not Python bools;
+# Ruff's "not F.col(...)" fix is invalid on Column objects.
+ignore = ["F403", "F405", "E712"]

@@ -1,0 +1,32 @@
+name: Deploy → Prod
+
+on:
+  push:
+    tags:
+      - 'v*'   # catches all version tags; RC tags are excluded by the job condition below
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual prod deploy'
+        required: false
+
+jobs:
+  deploy-prod:
+    name: Deploy to prod
+    runs-on: ubuntu-latest
+    # Skip RC tags (v*-rc*) — those are handled by deploy-stage.yml
+    if: ${{ !contains(github.ref_name, '-rc') }}
+
+    environment: production
+
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: databricks/setup-cli@main
+
+      - name: Deploy bundle (prod)
+        run: databricks bundle deploy --target prod

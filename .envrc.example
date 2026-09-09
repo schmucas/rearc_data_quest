@@ -1,0 +1,9 @@
+# Copy to .envrc (gitignored) and fill in your own values, then `direnv allow`.
+#
+# These feed ${VAR} expansion in .mcp.json and the Databricks CLI.
+# Free Edition has no account console, so no OAuth M2M: use a PAT.
+# `databricks auth describe --sensitive` prints host and token for the active profile.
+
+export DATABRICKS_HOST="https://<your-workspace>.cloud.databricks.com"   # no trailing slash
+export DATABRICKS_TOKEN="dapi..."                                        # rotate like any credential
+# export DATABRICKS_CONFIG_PROFILE="DEFAULT"

@@ -1,0 +1,15 @@
+{
+  "extraKnownMarketplaces": {
+    "schmucas-dotclaude": {
+      "source": { "source": "github", "repo": "schmucas/dotclaude" }
+    },
+    "databricks-agent-skills": {
+      "source": { "source": "github", "repo": "databricks/databricks-agent-skills" }
+    }
+  },
+  "enabledPlugins": {
+    "core@schmucas-dotclaude": true,
+    "databricks@schmucas-dotclaude": true,
+    "databricks@databricks-agent-skills": true
+  }
+}

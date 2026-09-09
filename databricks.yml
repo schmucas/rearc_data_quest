@@ -1,0 +1,99 @@
+# Declarative Automation Bundle (DAB) definition.
+# Docs: https://docs.databricks.com/dev-tools/bundles/index.html
+#
+# TEMPLATE VALUES: `bundle.name`, `bundle.uuid`, `catalog_prefix` and the dev
+# workspace host below are rewritten by scripts/init_project.py. Run that once
+# after cloning; don't hand-edit them unless you skipped the script.
+
+bundle:
+  name: rearc_data_quest
+  uuid: 0bd1eccc-6a22-42b5-9ea8-260bfa69dcb9
+
+include:
+  - resources/*.yml
+
+variables:
+  env:
+    description: Deployment environment. One of dev / stage / prod.
+
+  catalog_prefix:
+    description: >-
+      Unity Catalog naming root for the project. The working catalog is
+      <catalog_prefix>_<env> (e.g. rearc_dev) and raw source data lands in
+      <catalog_prefix>_ingest. Every job and pipeline passes this down so no
+      source file hardcodes a catalog name.
+    default: rearc
+
+  workspace_user:
+    description: Databricks workspace username, used for bundle permissions.
+    default: ${workspace.current_user.userName}
+
+  warehouse_id:
+    description: >-
+      SQL warehouse for AI/BI dashboards. Resolved by name rather than a
+      hardcoded id so it stays valid across workspaces. Only consumed if the
+      project adds a dashboard resource; harmless otherwise.
+    lookup:
+      warehouse: 'Serverless Starter Warehouse'
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-17504633-4e33.cloud.databricks.com
+    permissions:
+      - user_name: ${var.workspace_user}
+        level: CAN_MANAGE
+    variables:
+      env: dev
+
+  stage:
+    mode: production
+    presets:
+      name_prefix: 'stage_'
+    workspace:
+      root_path: /Workspace/Shared/${bundle.target}/${bundle.name}
+    permissions:
+      - user_name: ${var.workspace_user}
+        level: CAN_MANAGE
+    variables:
+      env: stage
+    # Schedules live on the target, not the resource file, so dev stays manual.
+    # All schedules ship PAUSED: unpause deliberately, per environment.
+    resources:
+      jobs:
+        bronze_ingestion_job:
+          schedule:
+            quartz_cron_expression: "0 0 0 * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED
+        declarative_pipeline_silver_gold:
+          schedule:
+            quartz_cron_expression: "0 0 1 * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED
+
+  prod:
+    mode: production
+    presets:
+      name_prefix: 'prod_'
+    workspace:
+      root_path: /Workspace/Shared/${bundle.target}/${bundle.name}
+    permissions:
+      - user_name: ${var.workspace_user}
+        level: CAN_MANAGE
+    variables:
+      env: prod
+    resources:
+      jobs:
+        bronze_ingestion_job:
+          schedule:
+            quartz_cron_expression: "0 0 2 * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED
+        declarative_pipeline_silver_gold:
+          schedule:
+            quartz_cron_expression: "0 0 3 * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED

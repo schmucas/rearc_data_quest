@@ -1,0 +1,14 @@
+{
+  "$comment": [
+    "Databricks managed MCP server for this workspace."
+  ],
+  "mcpServers": {
+    "dbsql": {
+      "type": "http",
+      "url": "${DATABRICKS_HOST}/api/2.0/mcp/sql",
+      "headers": {
+        "Authorization": "Bearer ${DATABRICKS_TOKEN}"
+      }
+    }
+  }
+}

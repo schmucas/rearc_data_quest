@@ -1,0 +1,22 @@
+# Table maintenance: OPTIMIZE / VACUUM across the project's schemas.
+#
+# Not scheduled by default. Add a schedule under the stage/prod targets in
+# databricks.yml when the table count justifies it.
+
+resources:
+  jobs:
+    maintenance_job:
+      name: maintenance_job
+
+      parameters:
+        - name: env
+          default: ${var.env}
+        - name: catalog_prefix
+          default: ${var.catalog_prefix}
+        - name: run_vacuum
+          default: "False"
+
+      tasks:
+        - task_key: optimize_tables
+          notebook_task:
+            notebook_path: ../src/maintenance/optimize_tables.ipynb

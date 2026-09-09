@@ -1,0 +1,45 @@
+name: Deploy → Stage
+
+on:
+  push:
+    tags:
+      - 'v*-rc*'   # e.g. v1.2.0-rc1
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual stage deploy'
+        required: false
+
+jobs:
+  deploy-stage:
+    name: Deploy to stage
+    runs-on: ubuntu-latest
+
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - uses: databricks/setup-cli@main
+
+      - name: Deploy bundle (stage)
+        run: databricks bundle deploy --target stage
+
+      # TODO: add integration test steps here.
+      # Integration tests should target the stage bundle deployment,
+      # not the local workspace. Example placeholder:
+      #
+      # - name: Run integration tests
+      #   run: uv run pytest tests/integration/ -v
