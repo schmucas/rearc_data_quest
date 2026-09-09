@@ -49,7 +49,7 @@ targets are bundle targets, not git branches.
 | Merge to `main` | `deploy-dev.yml` | deploy to `dev` |
 | Tag `v*-rc*` or manual dispatch | `deploy-stage.yml` | deploy to `stage` |
 | Tag `v*` or manual dispatch | `deploy-prod.yml` | gated deploy to `prod` via the `production` GitHub Environment |
-| Manual dispatch | `sourcing.yml` | fetch BLS + DataUSA into `landing/` and `source_manifest` (dev only, no schedule yet) |
+| Manual dispatch (env dropdown) | `sourcing.yml` | fetch BLS + DataUSA into `landing/` and `source_manifest` (only `dev` is actually deployed so far, no schedule yet) |
 
 Repository secrets required: `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `BLS_CONTACT_EMAIL`.
 

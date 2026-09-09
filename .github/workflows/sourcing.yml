@@ -2,12 +2,27 @@ name: Source Fetch → Landing
 
 # Manual dispatch only for now. Scheduling (cron) is deferred until stage/prod
 # have their own ingest schemas set up -- see the sourcing fetcher plan.
+#
+# One workspace, one DATABRICKS_HOST/TOKEN pair regardless of the env picked
+# below -- same convention as deploy-stage.yml/deploy-prod.yml. Only `dev` has
+# actually been deployed and run through setup_job so far; picking stage/prod
+# here will fail until those environments' ingest schema + source_manifest
+# table exist.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      env:
+        description: Target environment
+        type: choice
+        options:
+          - dev
+          - stage
+          - prod
+        default: dev
 
 jobs:
   fetch:
-    name: Fetch BLS + DataUSA into landing (dev)
+    name: Fetch BLS + DataUSA into landing (${{ inputs.env }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -30,4 +45,4 @@ jobs:
         run: uv sync --group sourcing
 
       - name: Fetch sources into landing
-        run: uv run python -m sourcing --env dev
+        run: uv run python -m sourcing --env ${{ inputs.env }}
