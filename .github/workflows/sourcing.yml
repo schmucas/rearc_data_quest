@@ -14,7 +14,7 @@ jobs:
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      BLS_CONTACT_EMAIL: ${{ vars.BLS_CONTACT_EMAIL }}
+      BLS_CONTACT_EMAIL: ${{ secrets.BLS_CONTACT_EMAIL }}
 
     steps:
       - uses: actions/checkout@v4

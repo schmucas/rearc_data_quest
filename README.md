@@ -51,9 +51,7 @@ targets are bundle targets, not git branches.
 | Tag `v*` or manual dispatch | `deploy-prod.yml` | gated deploy to `prod` via the `production` GitHub Environment |
 | Manual dispatch | `sourcing.yml` | fetch BLS + DataUSA into `landing/` and `source_manifest` (dev only, no schedule yet) |
 
-Repository secrets required: `DATABRICKS_HOST`, `DATABRICKS_TOKEN`.
-Repository variable required: `BLS_CONTACT_EMAIL` (Settings → Secrets and
-variables → Actions → **Variables** tab, not Secrets).
+Repository secrets required: `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `BLS_CONTACT_EMAIL`.
 
 See [CLAUDE.md](CLAUDE.md) for the conventions this project holds itself to, and
 [docs/mcp-setup.md](docs/mcp-setup.md) for wiring the Databricks MCP server.
