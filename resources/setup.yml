@@ -11,7 +11,7 @@
 resources:
   jobs:
     setup_job:
-      name: setup_job
+      name: rearc_setup_job
 
       parameters:
         - name: env

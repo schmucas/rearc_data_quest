@@ -12,7 +12,7 @@
 resources:
   jobs:
     bronze_ingestion_job:
-      name: bronze_ingestion
+      name: rearc_bronze_ingestion
 
       parameters:
         - name: env
@@ -25,8 +25,8 @@ resources:
       tasks:
         - task_key: autoloader_json
           notebook_task:
-            notebook_path: ../src/ingestion/autoloader_json.ipynb
+            notebook_path: ../src/bronze/autoloader_json.ipynb
 
         - task_key: delta_cdf
           notebook_task:
-            notebook_path: ../src/ingestion/delta_cdf.ipynb
+            notebook_path: ../src/bronze/delta_cdf.ipynb

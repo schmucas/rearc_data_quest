@@ -13,7 +13,7 @@
 resources:
   pipelines:
     declarative_silver_gold_pipeline:
-      name: declarative_silver_gold
+      name: rearc_dp_silver_gold
       catalog: ${var.catalog_prefix}_${var.env}
       # default target for unqualified dataset names, which is the silver layer
       schema: silver
@@ -35,7 +35,7 @@ resources:
 
   jobs:
     declarative_pipeline_silver_gold:
-      name: declarative_pipeline_silver_gold
+      name: rearc_declarative_pipeline_silver_gold
 
       parameters:
         - name: env

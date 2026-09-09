@@ -17,6 +17,9 @@ databricks bundle deploy --target dev
 databricks bundle run setup_job --target dev              # once, destructive
 databricks bundle run bronze_ingestion_job --target dev
 databricks bundle run declarative_pipeline_silver_gold --target dev
+
+uv sync --group sourcing
+BLS_CONTACT_EMAIL=you@example.com uv run python -m sourcing --env dev
 ```
 
 ## Layout
@@ -24,6 +27,7 @@ databricks bundle run declarative_pipeline_silver_gold --target dev
 ```
 databricks.yml                 bundle definition: env + catalog_prefix, 3 targets
 resources/                     one file per job or pipeline
+sourcing/                      GitHub Actions fetcher: BLS + DataUSA -> landing volume + manifest (not deployed by the bundle)
 src/setup/                     environment creation and seed data
 src/ingestion/                 bronze: Auto Loader and Delta CDF patterns
 src/silver/                    declarative pipeline: typed, deduplicated, CDC applied
@@ -45,8 +49,11 @@ targets are bundle targets, not git branches.
 | Merge to `main` | `deploy-dev.yml` | deploy to `dev` |
 | Tag `v*-rc*` or manual dispatch | `deploy-stage.yml` | deploy to `stage` |
 | Tag `v*` or manual dispatch | `deploy-prod.yml` | gated deploy to `prod` via the `production` GitHub Environment |
+| Manual dispatch | `sourcing.yml` | fetch BLS + DataUSA into `landing/` and `source_manifest` (dev only, no schedule yet) |
 
 Repository secrets required: `DATABRICKS_HOST`, `DATABRICKS_TOKEN`.
+Repository variable required: `BLS_CONTACT_EMAIL` (Settings → Secrets and
+variables → Actions → **Variables** tab, not Secrets).
 
 See [CLAUDE.md](CLAUDE.md) for the conventions this project holds itself to, and
 [docs/mcp-setup.md](docs/mcp-setup.md) for wiring the Databricks MCP server.

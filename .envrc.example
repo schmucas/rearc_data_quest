@@ -7,3 +7,5 @@
 export DATABRICKS_HOST="https://<your-workspace>.cloud.databricks.com"   # no trailing slash
 export DATABRICKS_TOKEN="dapi..."                                        # rotate like any credential
 # export DATABRICKS_CONFIG_PROFILE="DEFAULT"
+
+# export BLS_CONTACT_EMAIL="you@example.com"   # required by sourcing/bls.py; BLS blocks anonymous User-Agents
