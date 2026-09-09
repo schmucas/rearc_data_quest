@@ -1,0 +1,33 @@
+name: Source Fetch → Landing
+
+# Manual dispatch only for now. Scheduling (cron) is deferred until stage/prod
+# have their own ingest schemas set up -- see the sourcing fetcher plan.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  fetch:
+    name: Fetch BLS + DataUSA into landing (dev)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      BLS_CONTACT_EMAIL: ${{ secrets.BLS_CONTACT_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --group sourcing
+
+      - name: Fetch sources into landing
+        run: uv run python -m sourcing --env dev

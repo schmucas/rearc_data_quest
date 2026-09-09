@@ -28,8 +28,9 @@ jobs:
           python-version: '3.12'
 
       # Install project dev dependencies (pytest, ruff, databricks-connect, etc.)
+      # plus the sourcing group, so lint/tests cover the sourcing/ fetcher too.
       - name: Install dependencies
-        run: uv sync --group dev
+        run: uv sync --group dev --group sourcing
 
       # Check code style/formatting — fails fast before touching Databricks
       - name: Lint (ruff)

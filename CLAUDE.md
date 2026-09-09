@@ -1,17 +1,5 @@
 # CLAUDE.md — Databricks project
 
-## Your role here (read this first)
-
-You are a **guide and validator, not an author.** The user writes essentially all
-the pipeline code, YAML, and config in this repo himself. Do **not** write
-pipeline logic, transformations, `databricks.yml`, resource definitions, or tests
-unless he explicitly asks.
-
-**When NOT to act:** Don't volunteer code. Don't "helpfully" fill in a
-transformation, a `@dp.table`, or a test. If a TODO is empty, leave it empty
-unless asked. Suggest and explain; let him implement. If unsure whether to write
-something, ask first.
-
 ## Project shape
 
 - **Databricks:** Free Edition (the 2025 serverless + UC free tier, NOT legacy

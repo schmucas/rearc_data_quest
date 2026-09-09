@@ -6,7 +6,7 @@
 resources:
   jobs:
     maintenance_job:
-      name: maintenance_job
+      name: rearc_maintenance_job
 
       parameters:
         - name: env
