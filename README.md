@@ -2,9 +2,9 @@
 
 # Rearc Data Quest: Databricks Edition
 
-Sourcing two public datasets onto Databricks and modelling them as a Spark
-Declarative Pipeline, deployed as a Declarative Automation Bundle (DAB) on
-Databricks Free Edition.
+Sourcing two public datasets onto Databricks and modelling them through a
+bronze, silver, and gold medallion pipeline, deployed as a Declarative
+Automation Bundle (DAB) on Databricks Free Edition.
 
 ![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF?logo=githubactions&logoColor=white)
 [![Databricks](https://img.shields.io/badge/Databricks-FF3621?logo=databricks&logoColor=white)](https://www.databricks.com)
@@ -52,31 +52,61 @@ deployed as code.
 
 The answer: a fetcher that lives outside Databricks entirely (a GitHub Actions
 runner, `sourcing/`), pushing raw bytes and a record of what it did into Unity
-Catalog. A separate Lakeflow Declarative Pipeline, deployed via a Databricks
-Asset Bundle, turns those landed files into typed Delta tables. The two sides
-are decoupled on purpose: sourcing triggers nothing downstream, and bronze
-checks for new files on its own rather than being told about them.
+Catalog. Two Lakeflow Declarative Pipelines, each deployed via the same
+Databricks Asset Bundle, turn those landed files into a bronze, silver, and
+gold medallion. The three stages, source and land, bronze, and silver and
+gold, are three separate Databricks Jobs, and they are deliberately
+decoupled: sourcing triggers nothing downstream, bronze checks the landing
+volume for new files on its own schedule rather than being told about them,
+and silver and gold checks bronze's tables on its own schedule rather than
+being triggered when a bronze run finishes. That decoupling means silver and
+gold's schedule can be tuned to what downstream consumers actually need,
+faster or slower than ingestion, without touching ingestion at all.
 
 ```mermaid
-flowchart LR
-  BLS["BLS pr/ folder<br/>12 flat files"] --> GHA
-  API["DataUSA population<br/>query endpoint"] --> GHA
-  GHA["GitHub Actions runner<br/><code>sourcing/</code>"]
-  GHA -->|Files API| VOL[("landing volume<br/>raw bytes")]
-  GHA -->|Statement Execution API| MAN[("source_manifest<br/>append-only Delta")]
-  VOL --> BP["bronze pipeline<br/>(Auto Loader)"]
-  BP --> BZ[("bronze schema<br/>11 tables")]
+flowchart TB
+  BLS["BLS pr/ folder<br/>12 flat files"]:::source
+  API["DataUSA population<br/>query endpoint"]:::source
+  BLS --> GHA
+  API --> GHA
+  GHA["Job 1: source and land<br/>GitHub Actions runner<br/><code>sourcing/</code>"]:::job
 
-  subgraph UC["Unity Catalog"]
-    VOL
-    MAN
-    BZ
+  GHA -->|Files API| VOL[("landing volume<br/>raw bytes")]:::storage
+  GHA -->|Statement Execution API| MAN[("source_manifest<br/>append-only Delta")]:::storage
+
+  VOL -.->|checks on its own schedule| BJ
+  BJ["Job 2: bronze / ingest<br/>Auto Loader pipeline"]:::job
+  BJ --> BZ[("bronze<br/>11 tables, all STRING")]:::bronze
+
+  BZ -.->|checks on its own schedule| SJ
+  SJ["Job 3: silver and gold<br/>declarative pipeline"]:::job
+  SJ --> SV[("silver<br/>10 tables, typed + CDC")]:::silver
+  SV --> GD[("gold<br/>3 materialized views")]:::gold
+
+  subgraph ENV["dev / stage / prod: one independent copy of everything below"]
+    BJ
+    SJ
+    subgraph UC["Unity Catalog"]
+      VOL
+      MAN
+      BZ
+      SV
+      GD
+    end
   end
+
+  classDef source fill:#6b7280,stroke:#374151,color:#ffffff
+  classDef job fill:#2088ff,stroke:#0b5fcc,color:#ffffff
+  classDef bronze fill:#cd7f32,stroke:#8b4513,color:#1a1a1a
+  classDef silver fill:#c0c0c0,stroke:#5b5b5b,color:#1a1a1a
+  classDef gold fill:#ffd700,stroke:#b8860b,color:#1a1a1a
+  classDef storage fill:#38bdf8,stroke:#0284c7,color:#ffffff
 ```
 
-On a paid workspace this constraint would not exist: serverless has full
-outbound access unless a restricted network policy is applied, and the fetcher
-would run as a notebook task with no other change.
+On a paid workspace the network constraint would not exist: serverless has
+full outbound access unless a restricted network policy is applied, and the
+fetcher would run as a notebook task with no other change. The medallion
+split and the decoupled scheduling would stay exactly the same.
 
 ## What is in here
 
@@ -140,7 +170,7 @@ silently.
 | Catalog | Schemas | Holds |
 |---|---|---|
 | `rearc_ingest` | `dev`, `stage`, `prod` | `landing` volume + `source_manifest`, one independent set per environment |
-| `rearc_dev` / `rearc_stage` / `rearc_prod` | processing schemas | targets for the declarative pipelines |
+| `rearc_dev` / `rearc_stage` / `rearc_prod` | `bronze`, `silver`, `gold` | targets for the declarative pipelines |
 
 **Bronze layer**, `resources/dp_bronze_ingestion.yml` + `src/bronze/`: one
 Delta table per BLS file, one for DataUSA population, all raw. No filtering,
@@ -148,11 +178,38 @@ casting, or validation: every column lands as `STRING`, and every table
 carries `_ingested_at` and `_source_file` for provenance. Trimming and typing
 are silver's job.
 
-It runs as its own pipeline, separate from silver + gold
-(`resources/dp_silver_gold.yml`, currently scaffolded with no transformation
-logic yet). Nothing wires the two together: bronze checks the landing volume
-on every run and does nothing when there is nothing new, the same way
-sourcing triggers nothing downstream.
+It runs as its own pipeline and its own job (`declarative_bronze_ingestion_job`),
+separate from silver and gold. Nothing wires the two together: bronze checks
+the landing volume on every run and does nothing when there is nothing new,
+the same way sourcing triggers nothing downstream.
+
+**Silver layer**, `resources/dp_silver_gold.yml` (shared with gold) +
+`src/silver/`: one table per bronze source, typed and deduplicated. Bronze
+lands everything as `STRING`, so silver casts deliberately: `year`, `value`,
+`begin_year`, `end_year`, `base_year`, `display_level`, and `sort_sequence`
+to numeric types, `selectable` to `BOOLEAN`. Identifier codes (`series_id`,
+`measure_code`, `sector_code`, and the rest) stay `STRING`: they are not
+quantities, and `measure_code` values like `"01"` would lose their leading
+zero under a numeric cast. Deduplication uses SCD Type 1 change-data-capture
+(`dp.create_auto_cdc_flow`, sequenced by `_ingested_at`), since both sources
+restate history and bronze stacks every snapshot ever landed. `pr_data_0_current`
+is left unmodelled: it is a strict subset of `pr_data_1_alldata`, so modelling
+it too would only duplicate rows.
+
+**Gold layer**, same pipeline + `src/gold/`: three fully qualified
+materialized views. Population summary statistics for 2013 to 2018. Best year
+per series, summed over Q01 to Q04 with Q05 (BLS's annual average, not a
+fifth quarter) excluded, joined out to a human-readable label built from
+`pr_series`'s dimension codes. `PRS30006032`'s Q01 values left-joined with
+population, since BLS's history predates and outlives population's coverage
+and an inner join would silently drop most of the answer. Each analysis is
+implemented twice, once in the PySpark DataFrame API and once in Spark SQL,
+with PySpark as the primary that feeds the table and SQL kept alongside as a
+documented, runnable alternative.
+
+Silver and gold run as their own pipeline and their own job
+(`declarative_silver_gold_job`), decoupled from bronze the same way bronze is
+decoupled from sourcing.
 
 ## Repo map
 
@@ -166,6 +223,8 @@ sourcing/                 the fetcher, runs on a GitHub runner, not on Databrick
   manifest.py             Statement Execution API reads/writes
   config.py               env, catalog_prefix, warehouse resolution
 src/bronze/               raw landing tables, one per BLS file + DataUSA
+src/silver/               typed, deduplicated tables, one per bronze source
+src/gold/                 gold materialized views, PySpark + SQL implementations
 src/setup/                catalogs, schemas, volumes, manifest DDL
 src/utils/                importable helpers, unit tested
 tests/                    bundle guardrails + sourcing unit tests (no Spark)
@@ -189,6 +248,7 @@ Per code change:
 ```bash
 databricks bundle deploy --target dev
 databricks bundle run declarative_bronze_ingestion_job --target dev
+databricks bundle run declarative_silver_gold_job --target dev
 ```
 
 Fetching new source data (needs `BLS_CONTACT_EMAIL` set, and `setup_job` to
@@ -264,9 +324,12 @@ advanced. There is no rollback and no compensation logic: landing is
 immutable, so recovery is a re-run, and an immediate re-run is a no-op that
 lands nothing and writes 13 `UNCHANGED` rows.
 
-**Bronze is a separate pipeline from silver and gold**, so either can be
-redeployed and re-run independently, the same way sourcing and bronze are
-independent.
+**Bronze is a separate pipeline and job from silver and gold**, so either can
+be redeployed, re-run, or rescheduled independently, the same way sourcing
+and bronze are independent. In stage and prod, silver and gold's schedule is
+offset an hour after bronze's, since Free Edition only runs one pipeline at a
+time, but nothing wires a bronze run finishing to a silver/gold run starting:
+the offset is a scheduling courtesy, not a dependency.
 
 **DataUSA lands as one VARIANT column**, not a structured schema. The whole
 response is preserved as is via Auto Loader's `singleVariantColumn`, so there
@@ -275,6 +338,28 @@ anything to be extra against.
 
 **Every bronze table sets `cluster_by_auto=True`.** Databricks picks
 clustering keys from observed query patterns rather than a fixed declaration.
+
+**Bronze lands everything as `STRING` on purpose**
+(`cloudFiles.inferColumnTypes` is off), so silver is where real types get
+applied deliberately rather than inferred. Every cast was checked against
+live data first, not assumed: `selectable` is `T`/`F` only, `display_level`
+and `sort_sequence` are plain digits, `begin_year`/`end_year` are always four
+digits, and `base_year` uses `-` as BLS's N/A sentinel rather than being
+blank.
+
+**Silver dedups with Auto CDC, not a window function.**
+`dp.create_auto_cdc_flow`, sequenced by `_ingested_at`, SCD Type 1, is the
+platform-native expression of "CDC-applied," and it is what actually
+collapses bronze's repeated snapshots to current truth after a restatement.
+
+**Q05 is BLS's annual average, not a fifth quarter.** Gold's "sum of
+quarters" logic excludes it explicitly: summing it in inflates every total by
+roughly 25% and can flip which year wins.
+
+**Gold implements every analysis twice**, once in the PySpark DataFrame API
+and once in Spark SQL, to show fluency in both per the quest's ask. PySpark
+is the primary that feeds the table; the SQL version sits next to it as real,
+runnable, documented code, not a comment.
 
 ## Gotchas worth knowing
 
@@ -292,6 +377,18 @@ clustering keys from observed query patterns rather than a fixed declaration.
   Since BLS and DataUSA both rewrite content under stable filenames, the
   landing path needs a fresh timestamp on every run, or a same-day content
   change is silently lost.
+- **A column type change on an existing CDC target needs a full refresh.**
+  Delta will not merge `StringType` into `IntegerType` or `BooleanType` in
+  place. Deploying silver's numeric casts failed with
+  `CANNOT_UPDATE_TABLE_SCHEMA` until the affected tables were full-refreshed.
+  Landing is immutable, so the rebuild is deterministic and safe.
+- **BLS's header padding is not always trailing.** `series_id` is padded with
+  trailing spaces, but `value` is padded with leading spaces, since BLS
+  right-justifies numeric columns. Silver strips every column name
+  generically rather than assuming one direction.
+- **`variant_get` needs a bracket-quoted path for a key with a space.**
+  DataUSA's response uses the literal key `"Nation ID"`; the path is
+  `$["Nation ID"]`, not `$.Nation ID`.
 
 ## Reference
 

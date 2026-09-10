@@ -20,3 +20,18 @@ resources:
             include: ../src/silver/**
         - glob:
             include: ../src/gold/**
+
+  jobs:
+    declarative_silver_gold_job:
+      name: rearc_dp_silver_gold
+
+      parameters:
+        - name: env
+          default: ${var.env}
+        - name: catalog_prefix
+          default: ${var.catalog_prefix}
+
+      tasks:
+        - task_key: refresh_silver_gold_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.declarative_silver_gold_pipeline.id}
