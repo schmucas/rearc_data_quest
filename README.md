@@ -7,12 +7,12 @@ Declarative Pipeline, deployed as a Declarative Automation Bundle (DAB) on
 Databricks Free Edition.
 
 [![CI](https://github.com/schmucas/rearc_data_quest/actions/workflows/pr.yml/badge.svg)](https://github.com/schmucas/rearc_data_quest/actions/workflows/pr.yml)
-[![Databricks](https://img.shields.io/badge/Databricks-gray?logo=databricks&logoColor=white)](https://www.databricks.com)
-[![Databricks Free Edition](https://img.shields.io/badge/databricks-free_edition-gray)](https://docs.databricks.com/aws/en/getting-started/free-edition)
-[![Python](https://img.shields.io/badge/Python-3.12-gray?logo=python&logoColor=white)](https://www.python.org)
-[![PySpark](https://img.shields.io/badge/PySpark-gray?logo=apachespark&logoColor=white)](https://spark.apache.org/docs/latest/api/python/)
-[![Delta Lake](https://img.shields.io/badge/Delta_Lake-gray)](https://delta.io)
-[![Built with Claude Code](https://img.shields.io/badge/built%20with-claude%20code-gray)](https://claude.com/claude-code)
+[![Databricks](https://img.shields.io/badge/Databricks-FF3621?logo=databricks&logoColor=white)](https://www.databricks.com)
+[![Databricks Free Edition](https://img.shields.io/badge/databricks-free_edition-1B3139?logo=databricks&logoColor=white)](https://docs.databricks.com/aws/en/getting-started/free-edition)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org)
+[![PySpark](https://img.shields.io/badge/PySpark-E25A1C?logo=apachespark&logoColor=white)](https://spark.apache.org/docs/latest/api/python/)
+[![Delta Lake](https://img.shields.io/badge/Delta_Lake-00ADD4)](https://delta.io)
+[![Built with Claude Code](https://img.shields.io/badge/built%20with-claude%20code-CC785C?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
 </div>
 
