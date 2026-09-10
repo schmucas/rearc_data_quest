@@ -15,10 +15,18 @@ INGEST_CATALOG = f"{CATALOG_PREFIX}_ingest"
 SOURCE_PATH = f"/Volumes/{INGEST_CATALOG}/{ENV}/landing/datausa_population/population"
 TARGET_TABLE = f"{CATALOG}.bronze.population"
 
+# pipelines.reset.allowed=false blocks full-refresh resets: a full refresh
+# would reprocess every landed file from scratch and discard Auto Loader's
+# incremental state, which is never what we want for append-only bronze.
+POPULATION_TABLE_PROPERTIES = {
+    "pipelines.reset.allowed": "false",
+}
+
 
 @dp.table(
     name=TARGET_TABLE,
     comment="Raw DataUSA population response, landed as one VARIANT column per file version.",
+    table_properties=POPULATION_TABLE_PROPERTIES,
     cluster_by_auto=True,
 )
 @dp.expect("value_present", "value IS NOT NULL")
