@@ -74,26 +74,32 @@ flowchart LR
   GHA -->|Files API| VOL[("landing volume<br/>raw bytes")]:::storage
   GHA -->|Statement Execution API| MAN[("source_manifest<br/>append-only Delta")]:::storage
 
-  VOL -.->|checks on its own schedule| BJ
-  BJ["Job 2: bronze / ingest<br/>Auto Loader pipeline"]:::job
-  BJ --> BZ[("bronze<br/>11 tables, all STRING")]:::bronze
+  VOL -.->|checks on<br/>its own schedule| BJ
 
-  BZ -.->|checks on its own schedule| SJ
-  SJ["Job 3: silver and gold<br/>declarative pipeline"]:::job
-  SJ --> SV[("silver<br/>10 tables, typed + CDC")]:::silver
-  SJ --> GD[("gold<br/>3 materialized views")]:::gold
-  SV --> GD
+  subgraph J2["Job 2: bronze / ingest"]
+    direction TB
+    BJ["Auto Loader pipeline"]:::job
+    BZ[("bronze<br/>11 tables<br/>all STRING")]:::bronze
+    BJ --> BZ
+  end
 
-  subgraph ENV["dev / stage / prod: one independent copy of everything below"]
-    BJ
-    SJ
-    subgraph UC["Unity Catalog"]
-      VOL
-      MAN
-      BZ
-      SV
-      GD
-    end
+  BZ -.->|checks on<br/>its own schedule| SJ
+
+  subgraph J3["Job 3: silver and gold"]
+    direction TB
+    SJ["declarative pipeline"]:::job
+    SV[("silver<br/>10 tables<br/>typed + CDC")]:::silver
+    GD[("gold<br/>3 materialized<br/>views")]:::gold
+    SJ --> SV
+    SJ --> GD
+    SV --> GD
+  end
+
+  subgraph ENV["Unity Catalog, dev / stage / prod: one independent copy of everything below"]
+    VOL
+    MAN
+    J2
+    J3
   end
 
   classDef source fill:#6b7280,stroke:#374151,color:#ffffff
