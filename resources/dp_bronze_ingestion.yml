@@ -1,0 +1,33 @@
+# Declarative (Lakeflow) bronze ingestion pipeline.
+
+resources:
+  pipelines:
+    declarative_bronze_pipeline:
+      name: rearc_dp_bronze_ingestion
+      catalog: ${var.catalog_prefix}_${var.env}
+      schema: bronze
+      serverless: true
+      continuous: false
+
+      configuration:
+        env: ${var.env}
+        catalog_prefix: ${var.catalog_prefix}
+
+      libraries:
+        - glob:
+            include: ../src/bronze/**
+
+  jobs:
+    declarative_bronze_ingestion_job:
+      name: rearc_dp_bronze_ingestion
+
+      parameters:
+        - name: env
+          default: ${var.env}
+        - name: catalog_prefix
+          default: ${var.catalog_prefix}
+
+      tasks:
+        - task_key: refresh_bronze_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.declarative_bronze_pipeline.id}

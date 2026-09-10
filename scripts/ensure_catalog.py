@@ -1,10 +1,11 @@
 """Ensure this deploy's target catalog exists before `databricks bundle deploy`.
 
-The declarative pipeline resource (resources/declarative_pipeline.yml) points
-at `<catalog_prefix>_<env>`, and the Pipelines API validates that catalog
-exists at *creation* time -- a first deploy to a brand-new environment fails
-with CATALOG_DOES_NOT_EXIST otherwise, since the catalog is normally created
-by setup_job, which itself can't run until the bundle has been deployed once.
+Both declarative pipeline resources (resources/dp_bronze_ingestion.yml,
+resources/dp_silver_gold.yml) point at `<catalog_prefix>_<env>`, and the
+Pipelines API validates that catalog exists at *creation* time -- a first
+deploy to a brand-new environment fails with CATALOG_DOES_NOT_EXIST otherwise,
+since the catalog is normally created by setup_job, which itself can't run
+until the bundle has been deployed once.
 This script breaks that chicken-and-egg loop with a one-line, idempotent
 `CREATE CATALOG IF NOT EXISTS`, safe to run on every deploy.
 

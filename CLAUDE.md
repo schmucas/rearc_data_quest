@@ -10,8 +10,10 @@
   `src/<pkg>/` installable package. Do not reintroduce any of these. Shareable,
   unit-testable logic goes in a separate utils wheel repo, or in `src/utils/`
   for helpers that only this project uses.
-- **Pipeline runs off** the declarative `src/silver/*.py` and `src/gold/*.py`
-  files via the glob include in `resources/declarative_pipeline.yml`.
+- **Two declarative pipelines.** `resources/dp_bronze_ingestion.yml` runs
+  `src/bronze/*.py`; `resources/dp_silver_gold.yml` runs `src/silver/*.py` and
+  `src/gold/*.py`. They're decoupled on purpose — bronze ingestion doesn't
+  block on downstream processing.
 - **Jobs are not pipeline-only.** A job may mix `notebook_task`, `pipeline_task`
   (refresh), `run_job_task`. Notebook tasks are expected and fine; the only
   banned task type is `python_wheel_task`.
