@@ -55,59 +55,91 @@ runner, `sourcing/`), pushing raw bytes and a record of what it did into Unity
 Catalog. Two Lakeflow Declarative Pipelines, each deployed via the same
 Databricks Asset Bundle, turn those landed files into a bronze, silver, and
 gold medallion. The three stages, source and land, bronze, and silver and
-gold, are three separate Databricks Jobs, and they are deliberately
-decoupled: sourcing triggers nothing downstream, bronze checks the landing
-volume for new files on its own schedule rather than being told about them,
-and silver and gold checks bronze's tables on its own schedule rather than
-being triggered when a bronze run finishes. That decoupling means silver and
-gold's schedule can be tuned to what downstream consumers actually need,
-faster or slower than ingestion, without touching ingestion at all.
+gold, run on three separate schedules: a GitHub Actions workflow, and two
+Databricks Jobs that each refresh a declarative pipeline. They are
+deliberately decoupled: sourcing triggers nothing downstream, bronze checks
+the landing volume for new files on its own schedule rather than being told
+about them, and silver and gold checks bronze's tables on its own schedule
+rather than being triggered when a bronze run finishes. That decoupling
+means silver and gold's schedule can be tuned to what downstream consumers
+actually need, faster or slower than ingestion, without touching ingestion
+at all.
+
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://cdn.simpleicons.org/github/c9d1d9">
+    <img src="https://cdn.simpleicons.org/github/1f2328" height="30" alt="GitHub">
+  </picture>
+  &nbsp;&nbsp;&nbsp;&nbsp;<b>&rarr;</b>&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://cdn.simpleicons.org/databricks/ff3621" height="30" alt="Databricks">
+</div>
 
 ```mermaid
 flowchart LR
-  BLS["BLS pr/ folder<br/>12 flat files"]:::source
-  API["DataUSA population<br/>query endpoint"]:::source
-  BLS --> GHA
-  API --> GHA
-  GHA["Job 1: source and land<br/>GitHub Actions runner<br/><code>sourcing/</code>"]:::job
-
-  GHA -->|Files API| VOL[("landing volume<br/>raw bytes")]:::storage
-  GHA -->|Statement Execution API| MAN[("source_manifest<br/>append-only Delta")]:::storage
-
-  VOL -.->|checks on<br/>its own schedule| BJ
-
-  subgraph J2["Job 2: bronze / ingest"]
+  subgraph GH["`**GitHub**`"]
     direction TB
-    BJ["Auto Loader pipeline"]:::job
-    BZ[("bronze<br/>11 tables<br/>all STRING")]:::bronze
-    BJ --> BZ
+    BLS["`**BLS**
+    pr/ folder, 12 flat files`"]:::source
+    API["`**DataUSA**
+    population query endpoint`"]:::source
+    GHA["`**Job 1: source and land**
+    Actions runner, sourcing/`"]:::job
+    BLS -->|"conditional GET"| GHA
+    API -->|"sha256 of the body"| GHA
   end
 
-  BZ -.->|checks on<br/>its own schedule| SJ
-
-  subgraph J3["Job 3: silver and gold"]
-    direction TB
-    SJ["declarative pipeline"]:::job
-    SV[("silver<br/>10 tables<br/>typed + CDC")]:::silver
-    GD[("gold<br/>3 materialized<br/>views")]:::gold
-    SJ --> SV
-    SJ --> GD
-    SV --> GD
+  subgraph DBX["`**Databricks**`"]
+    direction LR
+    subgraph LAND["`**Landing**`"]
+      direction TB
+      VOL[("`**landing volume**
+      raw bytes`")]:::storage
+      MAN[("`**source_manifest**
+      append-only Delta`")]:::storage
+    end
+    subgraph BRONZE["`**Bronze** · DP 2`"]
+      BZ["`**11 tables**
+      raw as landed
+      Auto Loader + audit columns`"]:::bronze
+    end
+    subgraph J3["`**DP 3: silver and gold**`"]
+      direction LR
+      subgraph SILVER["`**Silver**`"]
+        SV["`**10 tables**
+        typed, deduplicated, CDC`"]:::silver
+      end
+      subgraph GOLD["`**Gold**`"]
+        GD["`**3 materialized views**
+        joins and aggregates`"]:::gold
+      end
+      SV --> GD
+    end
+    NOTE["`Unity Catalog: one independent copy of everything above
+    per target (dev / stage / prod)`"]:::note
   end
 
-  subgraph ENV["Unity Catalog, dev / stage / prod: one independent copy of everything below"]
-    VOL
-    MAN
-    J2
-    J3
-  end
+  GHA -->|"Files API"| VOL
+  GHA -->|"Statement Execution API"| MAN
+  VOL -.->|"checks the volume<br/>on its own schedule"| BZ
+  BZ -.->|"checks bronze tables<br/>on its own schedule"| SV
 
-  classDef source fill:#6b7280,stroke:#374151,color:#ffffff
-  classDef job fill:#2088ff,stroke:#0b5fcc,color:#ffffff
-  classDef bronze fill:#cd7f32,stroke:#8b4513,color:#1a1a1a
-  classDef silver fill:#c0c0c0,stroke:#5b5b5b,color:#1a1a1a
-  classDef gold fill:#ffd700,stroke:#b8860b,color:#1a1a1a
-  classDef storage fill:#38bdf8,stroke:#0284c7,color:#ffffff
+  classDef source fill:#6b7280,stroke:#374151,stroke-width:2px,color:#ffffff
+  classDef job fill:#2088ff,stroke:#0b5fcc,stroke-width:2px,color:#ffffff
+  classDef bronze fill:#cd7f32,stroke:#8b4513,stroke-width:2px,color:#1a1a1a
+  classDef silver fill:#c0c0c0,stroke:#5b5b5b,stroke-width:2px,color:#1a1a1a
+  classDef gold fill:#ffd700,stroke:#b8860b,stroke-width:2px,color:#1a1a1a
+  classDef storage fill:#38bdf8,stroke:#0284c7,stroke-width:2px,color:#ffffff
+  classDef note fill:#fdeee9,stroke:#fdeee9,stroke-width:0px,color:#8f1d0c
+
+  style GH fill:#f2f4f7,stroke:#57606a,stroke-width:3px,color:#1f2328
+  style DBX fill:#fdeee9,stroke:#ff3621,stroke-width:3px,color:#8f1d0c
+  style LAND fill:#ffffff,stroke:#0284c7,stroke-width:2px,color:#075985
+  style BRONZE fill:#ffffff,stroke:#cd7f32,stroke-width:2px,color:#7c4a1e
+  style J3 fill:#fbfbfb,stroke:#9aa0a6,stroke-width:2px,color:#3c4043
+  style SILVER fill:#ffffff,stroke:#8a8a8a,stroke-width:2px,color:#4a4a4a
+  style GOLD fill:#ffffff,stroke:#b8860b,stroke-width:2px,color:#8a6508
+
+  linkStyle default stroke:#4b5563,stroke-width:3px
 ```
 
 On a paid workspace the network constraint would not exist: serverless has
