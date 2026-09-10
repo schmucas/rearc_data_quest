@@ -13,6 +13,7 @@ Databricks Free Edition.
 - [Landing layout](#landing-layout)
 - [The manifest](#the-manifest)
 - [How a run decides what to fetch](#how-a-run-decides-what-to-fetch)
+- [Bronze layer](#bronze-layer)
 - [CI/CD](#cicd)
 - [Repository layout](#repository-layout)
 
@@ -175,6 +176,50 @@ writes 13 `UNCHANGED` rows.
 Ingestion triggers nothing downstream. The two stay independent so either can be
 re-run alone.
 
+## Bronze layer
+
+A separate Lakeflow Declarative Pipeline (`resources/dp_bronze_ingestion.yml`,
+`src/bronze/`) turns the landing volume into queryable Delta tables: one per
+BLS file, one for DataUSA population. It is deliberately decoupled from
+`sourcing/`: no read of `source_manifest`, no freshness check. Auto Loader
+checks the landing volume on every run; nothing new means nothing to do.
+
+```mermaid
+flowchart LR
+  VOL[("landing volume")] --> AL["Auto Loader<br/>(cloudFiles)"]
+  AL --> BZ[("bronze schema<br/>11 tables")]
+
+  subgraph PIPE["dp_bronze_ingestion"]
+    AL
+  end
+```
+
+Bronze does no filtering, casting, or validation. Every column lands as
+`STRING`, and every table carries `_ingested_at` and `_source_file` for
+provenance. Trimming and typing are silver's job.
+
+It also runs as its own pipeline, separate from silver + gold
+(`resources/dp_silver_gold.yml`). Nothing wires the two together yet: bronze
+and downstream processing stay independent, the same way sourcing and bronze
+do.
+
+**Gotchas worth knowing:**
+
+- **BLS pads header text, not just values.** `pr.series` and both
+  `pr.data.*` files pad `series_id` to a fixed 17 characters, spaces
+  included, in the header line itself. Delta rejects spaces in column names
+  outright (`DELTA_INVALID_CHARACTERS_IN_COLUMN_NAMES`), regardless of the
+  data, and this surfaced as a real deploy failure, not a hypothetical.
+  Fixed with `delta.columnMapping.mode = 'name'`, so the padded name lands
+  untouched instead of being renamed.
+- **DataUSA lands as one VARIANT column**, not a structured schema. The
+  whole response is preserved as is via Auto Loader's `singleVariantColumn`,
+  so there is no `_rescued_data` column on that table: nothing is parsed
+  into fields for anything to be extra against.
+- Every bronze table sets `cluster_by_auto=True`. Databricks picks
+  clustering keys from observed query patterns rather than a fixed
+  declaration.
+
 ## CI/CD
 
 Trunk-based: a single `main` plus short-lived feature branches. Deploy targets
@@ -199,6 +244,7 @@ sourcing/                 the fetcher — runs on a GitHub runner, not on Databr
   landing.py              path construction + Files API upload
   manifest.py             Statement Execution API reads/writes
   config.py               env, catalog_prefix, warehouse resolution
+src/bronze/               raw landing tables, one per BLS file + DataUSA
 src/setup/                catalogs, schemas, volumes, manifest DDL
 src/utils/                importable helpers, unit tested
 tests/                    bundle guardrails + sourcing unit tests (no Spark)
