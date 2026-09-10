@@ -64,7 +64,7 @@ gold's schedule can be tuned to what downstream consumers actually need,
 faster or slower than ingestion, without touching ingestion at all.
 
 ```mermaid
-flowchart TB
+flowchart LR
   BLS["BLS pr/ folder<br/>12 flat files"]:::source
   API["DataUSA population<br/>query endpoint"]:::source
   BLS --> GHA
@@ -81,7 +81,8 @@ flowchart TB
   BZ -.->|checks on its own schedule| SJ
   SJ["Job 3: silver and gold<br/>declarative pipeline"]:::job
   SJ --> SV[("silver<br/>10 tables, typed + CDC")]:::silver
-  SV --> GD[("gold<br/>3 materialized views")]:::gold
+  SJ --> GD[("gold<br/>3 materialized views")]:::gold
+  SV --> GD
 
   subgraph ENV["dev / stage / prod: one independent copy of everything below"]
     BJ
