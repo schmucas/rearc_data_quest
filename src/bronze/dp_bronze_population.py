@@ -1,8 +1,7 @@
 """Bronze: raw landing for the DataUSA population response.
 
-Landed as a single VARIANT column via Auto Loader's singleVariantColumn --
-Unlike the BLS tables, there is no
-_rescued_data column here: nothing is parsed into individual columns.
+- Landed as one VARIANT column via singleVariantColumn.
+- No _rescued_data column -- nothing is parsed, so nothing to rescue.
 """
 
 from pyspark import pipelines as dp
@@ -22,6 +21,7 @@ TARGET_TABLE = f"{CATALOG}.bronze.population"
     comment="Raw DataUSA population response, landed as one VARIANT column per file version.",
     cluster_by_auto=True,
 )
+@dp.expect("value_present", "value IS NOT NULL")
 def population():
     return (
         spark.readStream.format("cloudFiles")
