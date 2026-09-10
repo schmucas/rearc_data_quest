@@ -97,23 +97,58 @@ def test_every_job_passes_env_and_catalog_prefix():
             assert {"env", "catalog_prefix"} <= names, f"{path.name}:{job_name} is missing env or catalog_prefix"
 
 
-def test_bronze_included_in_pipeline_libraries():
-    """Some declarative pipeline must actually load the new bronze sources."""
+def _pipeline_includes_glob(glob: str) -> bool:
     for path in RESOURCES.glob("*.yml"):
         pipelines = (yaml.safe_load(path.read_text()).get("resources") or {}).get("pipelines") or {}
         for pipeline in pipelines.values():
             includes = {lib["glob"]["include"] for lib in pipeline.get("libraries", [])}
-            if "../src/bronze/**" in includes:
-                return
-    raise AssertionError("no pipeline includes ../src/bronze/**")
+            if glob in includes:
+                return True
+    return False
 
 
-def test_bronze_files_avoid_bare_dlt_word():
+def test_bronze_included_in_pipeline_libraries():
+    """Some declarative pipeline must actually load the bronze sources."""
+    assert _pipeline_includes_glob("../src/bronze/**"), "no pipeline includes ../src/bronze/**"
+
+
+def test_silver_included_in_pipeline_libraries():
+    """Some declarative pipeline must actually load the silver sources."""
+    assert _pipeline_includes_glob("../src/silver/**"), "no pipeline includes ../src/silver/**"
+
+
+def test_gold_included_in_pipeline_libraries():
+    """Some declarative pipeline must actually load the gold sources."""
+    assert _pipeline_includes_glob("../src/gold/**"), "no pipeline includes ../src/gold/**"
+
+
+def test_pipeline_sources_avoid_bare_dlt_word():
     """Stricter than the existing '@dlt.' substring check: no bare `dlt` word at all."""
     bare_dlt = re.compile(r"\bdlt\b")
-    for path in (SRC / "bronze").rglob("*.py"):
+    for path in _pipeline_source_files():
         text = path.read_text()
         assert not bare_dlt.search(text), f"{path.name} references the legacy dlt spelling"
+
+
+def test_gold_table_names_fully_qualified():
+    """Gold names are fully qualified; only silver is bare."""
+    for path in (SRC / "gold").rglob("*.py"):
+        text = path.read_text()
+        assert "{CATALOG}.gold." in text, f"{path.name} does not fully qualify its gold table name"
+
+
+def test_silver_table_names_are_bare():
+    """Silver dataset names are bare -- the pipeline's default schema is silver."""
+    for path in (SRC / "silver").rglob("*.py"):
+        text = path.read_text()
+        assert "{CATALOG}.silver." not in text, f"{path.name} qualifies a silver name; silver names must be bare"
+        assert "{CATALOG}.gold." not in text, f"{path.name} references a gold-qualified name from silver"
+
+
+def test_no_spark_sql_in_silver():
+    """Silver is PySpark-only transformation plumbing -- no SQL strings. Gold is exempt."""
+    for path in (SRC / "silver").rglob("*.py"):
+        assert "spark.sql(" not in path.read_text(), f"{path.name} uses spark.sql(; silver must be PySpark only"
 
 
 def test_bronze_never_sets_checkpoint_or_schema_location():

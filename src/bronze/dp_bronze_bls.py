@@ -1,10 +1,10 @@
 """Bronze: raw landing for BLS pr.* tab-delimited files.
 
-One Auto Loader streaming table per dataset, with schema merge and rescued
-data column.
-Each table carries exactly three audit columns -- _ingested_at, _source_file,
-and _rescued_data (the last populated by Auto Loader itself via the rescue
-option).
+- One Auto Loader streaming table per dataset, schema-merged.
+- Audit columns: _ingested_at, _source_file, _rescued_data (Auto Loader).
+- Landed filenames have no extension, so the volume browser preview shows
+  "Format not supported" -- cosmetic only; cloudFiles.format "csv" below
+  reads tab-delimited text fine regardless of extension.
 """
 
 from dataclasses import dataclass
@@ -126,6 +126,7 @@ def _make_bronze_table(cfg: BlsSource):
         table_properties=BLS_TABLE_PROPERTIES,
         cluster_by_auto=True,
     )
+    @dp.expect("no_rescued_data", "_rescued_data IS NULL")
     def _bronze_table():
         return (
             spark.readStream.format("cloudFiles")
