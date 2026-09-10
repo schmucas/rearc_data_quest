@@ -19,6 +19,17 @@ INGEST_CATALOG = f"{CATALOG_PREFIX}_ingest"
 
 LANDING_BASE = f"/Volumes/{INGEST_CATALOG}/{ENV}/landing/bls_pr"
 
+# BLS pads some header text with spaces (e.g. "series_id" + trailing spaces),
+# and Delta rejects spaces in column names outright regardless of table
+# content -- DELTA_INVALID_CHARACTERS_IN_COLUMN_NAMES. Column Mapping lets
+# Delta store an arbitrary display name against an internal physical one, so
+# the padded header lands untouched rather than needing to be renamed.
+BLS_TABLE_PROPERTIES = {
+    "delta.columnMapping.mode": "name",
+    "delta.minReaderVersion": "2",
+    "delta.minWriterVersion": "5",
+}
+
 
 @dataclass(frozen=True)
 class BlsSource:
@@ -109,7 +120,7 @@ def _make_bronze_table(cfg: BlsSource):
     table_fqn = f"{CATALOG}.bronze.{cfg.table}"
     source_path = f"{LANDING_BASE}/{cfg.dataset}"
 
-    @dp.table(name=table_fqn, comment=cfg.comment)
+    @dp.table(name=table_fqn, comment=cfg.comment, table_properties=BLS_TABLE_PROPERTIES)
     def _bronze_table():
         return (
             spark.readStream.format("cloudFiles")
