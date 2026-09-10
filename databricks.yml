@@ -68,6 +68,15 @@ targets:
             quartz_cron_expression: "0 0 1 * * ?"
             timezone_id: "UTC"
             pause_status: PAUSED
+        # An hour after bronze: Free Edition runs one pipeline at a time, and
+        # silver/gold reads bronze's output, so it schedules strictly after.
+        # This offset is the only coupling between the two -- silver/gold
+        # doesn't wait on or get triggered by bronze; it's timed not to race it.
+        declarative_silver_gold_job:
+          schedule:
+            quartz_cron_expression: "0 0 2 * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED
 
   prod:
     mode: production
@@ -85,5 +94,10 @@ targets:
         declarative_bronze_ingestion_job:
           schedule:
             quartz_cron_expression: "0 0 3 * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED
+        declarative_silver_gold_job:
+          schedule:
+            quartz_cron_expression: "0 0 4 * * ?"
             timezone_id: "UTC"
             pause_status: PAUSED
