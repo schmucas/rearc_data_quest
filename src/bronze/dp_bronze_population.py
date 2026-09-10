@@ -20,6 +20,7 @@ TARGET_TABLE = f"{CATALOG}.bronze.population"
 @dp.table(
     name=TARGET_TABLE,
     comment="Raw DataUSA population response, landed as one VARIANT column per file version.",
+    cluster_by_auto=True,
 )
 def population():
     return (

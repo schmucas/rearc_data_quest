@@ -120,7 +120,12 @@ def _make_bronze_table(cfg: BlsSource):
     table_fqn = f"{CATALOG}.bronze.{cfg.table}"
     source_path = f"{LANDING_BASE}/{cfg.dataset}"
 
-    @dp.table(name=table_fqn, comment=cfg.comment, table_properties=BLS_TABLE_PROPERTIES)
+    @dp.table(
+        name=table_fqn,
+        comment=cfg.comment,
+        table_properties=BLS_TABLE_PROPERTIES,
+        cluster_by_auto=True,
+    )
     def _bronze_table():
         return (
             spark.readStream.format("cloudFiles")
