@@ -98,11 +98,14 @@ def test_every_job_passes_env_and_catalog_prefix():
 
 
 def test_bronze_included_in_pipeline_libraries():
-    """The declarative pipeline must actually load the new bronze sources."""
-    pipeline_yml = yaml.safe_load((RESOURCES / "declarative_pipeline.yml").read_text())
-    libraries = pipeline_yml["resources"]["pipelines"]["declarative_silver_gold_pipeline"]["libraries"]
-    includes = {lib["glob"]["include"] for lib in libraries}
-    assert "../src/bronze/**" in includes, "src/bronze/** is not in the pipeline's libraries glob"
+    """Some declarative pipeline must actually load the new bronze sources."""
+    for path in RESOURCES.glob("*.yml"):
+        pipelines = (yaml.safe_load(path.read_text()).get("resources") or {}).get("pipelines") or {}
+        for pipeline in pipelines.values():
+            includes = {lib["glob"]["include"] for lib in pipeline.get("libraries", [])}
+            if "../src/bronze/**" in includes:
+                return
+    raise AssertionError("no pipeline includes ../src/bronze/**")
 
 
 def test_bronze_files_avoid_bare_dlt_word():

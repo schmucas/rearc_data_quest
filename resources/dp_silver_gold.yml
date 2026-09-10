@@ -1,0 +1,22 @@
+# Declarative (Lakeflow) silver + gold pipeline.
+#
+
+resources:
+  pipelines:
+    declarative_silver_gold_pipeline:
+      name: rearc_dp_silver_gold
+      catalog: ${var.catalog_prefix}_${var.env}
+      # default target for unqualified dataset names, which is the silver layer
+      schema: silver
+      serverless: true
+      continuous: false
+
+      configuration:
+        env: ${var.env}
+        catalog_prefix: ${var.catalog_prefix}
+
+      libraries:
+        - glob:
+            include: ../src/silver/**
+        - glob:
+            include: ../src/gold/**

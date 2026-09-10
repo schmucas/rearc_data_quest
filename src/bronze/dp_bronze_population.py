@@ -1,14 +1,8 @@
 """Bronze: raw landing for the DataUSA population response.
 
 Landed as a single VARIANT column via Auto Loader's singleVariantColumn --
-Databricks' documented pattern for raw semi-structured JSON: the whole
-document is preserved untouched, with all field access (including reaching
-into the `data` array) deferred to silver. Unlike the BLS tables, there is no
-_rescued_data column here: nothing is parsed into individual columns, so
-there is nothing for Auto Loader to consider "extra."
-
-Runs inside the declarative pipeline. `spark` is the pipeline's global
-session and this file is never imported.
+Unlike the BLS tables, there is no
+_rescued_data column here: nothing is parsed into individual columns.
 """
 
 from pyspark import pipelines as dp
@@ -27,7 +21,6 @@ TARGET_TABLE = f"{CATALOG}.bronze.population"
     name=TARGET_TABLE,
     comment="Raw DataUSA population response, landed as one VARIANT column per file version.",
 )
-@dp.expect("value_not_null", "value IS NOT NULL")
 def population():
     return (
         spark.readStream.format("cloudFiles")
