@@ -1,7 +1,7 @@
-# Declarative (Lakeflow) silver + gold pipeline.
+# Declarative (Lakeflow) bronze + silver + gold pipeline.
 #
-# One pipeline covers both layers and resolves silver -> gold ordering itself,
-# so there is no hand-declared depends_on graph here.
+# One pipeline covers all three layers and resolves bronze -> silver -> gold
+# ordering itself, so there is no hand-declared depends_on graph here.
 #
 # Naming rule in src/: bare dataset names resolve against `schema:` below, so
 # silver datasets are bare and anything outside silver (bronze sources, gold
@@ -26,6 +26,8 @@ resources:
 
       libraries:
         - glob:
+            include: ../src/bronze/**
+        - glob:
             include: ../src/silver/**
         - glob:
             include: ../src/gold/**
@@ -44,13 +46,6 @@ resources:
           default: ${var.catalog_prefix}
 
       tasks:
-        # Uncomment to make this the full end-to-end run (bronze, then silver+gold):
-        # - task_key: run_bronze_ingestion
-        #   run_job_task:
-        #     job_id: ${resources.jobs.bronze_ingestion_job.id}
-
         - task_key: refresh_declarative_pipeline
-          # depends_on:
-          #   - task_key: run_bronze_ingestion
           pipeline_task:
             pipeline_id: ${resources.pipelines.declarative_silver_gold_pipeline.id}

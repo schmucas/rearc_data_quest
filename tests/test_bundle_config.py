@@ -68,8 +68,14 @@ def test_no_hardcoded_catalog_names_in_src():
         )
 
 
+def _pipeline_source_files():
+    return (
+        list((SRC / "bronze").rglob("*.py")) + list((SRC / "silver").rglob("*.py")) + list((SRC / "gold").rglob("*.py"))
+    )
+
+
 def test_pipeline_sources_use_current_declarative_api():
-    for path in list((SRC / "silver").rglob("*.py")) + list((SRC / "gold").rglob("*.py")):
+    for path in _pipeline_source_files():
         text = path.read_text()
         assert "from pyspark import pipelines as dp" in text, f"{path.name} does not import pyspark.pipelines"
         assert "@dlt." not in text, f"{path.name} uses the legacy dlt spelling"
@@ -77,7 +83,7 @@ def test_pipeline_sources_use_current_declarative_api():
 
 def test_pipeline_sources_read_config_from_spark_conf():
     """Pipelines have no widgets; env and catalog_prefix come from spark.conf."""
-    for path in list((SRC / "silver").rglob("*.py")) + list((SRC / "gold").rglob("*.py")):
+    for path in _pipeline_source_files():
         text = path.read_text()
         assert 'spark.conf.get("env")' in text, f"{path.name} does not read env from spark.conf"
         assert 'spark.conf.get("catalog_prefix")' in text, f"{path.name} does not read catalog_prefix from spark.conf"
@@ -89,3 +95,27 @@ def test_every_job_passes_env_and_catalog_prefix():
         for job_name, job in jobs.items():
             names = {p["name"] for p in job.get("parameters", [])}
             assert {"env", "catalog_prefix"} <= names, f"{path.name}:{job_name} is missing env or catalog_prefix"
+
+
+def test_bronze_included_in_pipeline_libraries():
+    """The declarative pipeline must actually load the new bronze sources."""
+    pipeline_yml = yaml.safe_load((RESOURCES / "declarative_pipeline.yml").read_text())
+    libraries = pipeline_yml["resources"]["pipelines"]["declarative_silver_gold_pipeline"]["libraries"]
+    includes = {lib["glob"]["include"] for lib in libraries}
+    assert "../src/bronze/**" in includes, "src/bronze/** is not in the pipeline's libraries glob"
+
+
+def test_bronze_files_avoid_bare_dlt_word():
+    """Stricter than the existing '@dlt.' substring check: no bare `dlt` word at all."""
+    bare_dlt = re.compile(r"\bdlt\b")
+    for path in (SRC / "bronze").rglob("*.py"):
+        text = path.read_text()
+        assert not bare_dlt.search(text), f"{path.name} references the legacy dlt spelling"
+
+
+def test_bronze_never_sets_checkpoint_or_schema_location():
+    """Auto Loader checkpoint/schema tracking is pipeline-managed; never set explicitly."""
+    for path in (SRC / "bronze").rglob("*.py"):
+        text = path.read_text()
+        assert "checkpointLocation" not in text, f"{path.name} sets checkpointLocation"
+        assert "schemaLocation" not in text, f"{path.name} sets schemaLocation"

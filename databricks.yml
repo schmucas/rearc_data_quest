@@ -63,11 +63,6 @@ targets:
     # All schedules ship PAUSED: unpause deliberately, per environment.
     resources:
       jobs:
-        bronze_ingestion_job:
-          schedule:
-            quartz_cron_expression: "0 0 0 * * ?"
-            timezone_id: "UTC"
-            pause_status: PAUSED
         declarative_pipeline_silver_gold:
           schedule:
             quartz_cron_expression: "0 0 1 * * ?"
@@ -87,11 +82,6 @@ targets:
       env: prod
     resources:
       jobs:
-        bronze_ingestion_job:
-          schedule:
-            quartz_cron_expression: "0 0 2 * * ?"
-            timezone_id: "UTC"
-            pause_status: PAUSED
         declarative_pipeline_silver_gold:
           schedule:
             quartz_cron_expression: "0 0 3 * * ?"
