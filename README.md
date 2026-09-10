@@ -11,6 +11,22 @@ Databricks Free Edition.
 
 </div>
 
+## Built with Claude Code
+
+This project is built in close collaboration with Claude Cowork and Claude
+Code.
+
+Claude Code sessions run on a set of custom plugins and slash commands,
+published in a personal marketplace repo,
+[schmucas/dotclaude](https://github.com/schmucas/dotclaude), alongside
+Databricks' own officially maintained `databricks` plugin (DABs, Lakeflow
+Jobs, Spark Declarative Pipelines, Unity Catalog, and more).
+
+This repo also wires up Databricks' managed MCP server so Claude Code can
+query the workspace directly, configured via a project-level `.mcp.json`
+rather than Claude's own UI, since the workspace connection is tied to this
+project.
+
 ## Contents
 
 - [The idea](#the-idea)
