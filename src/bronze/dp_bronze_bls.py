@@ -24,10 +24,15 @@ LANDING_BASE = f"/Volumes/{INGEST_CATALOG}/{ENV}/landing/bls_pr"
 # content -- DELTA_INVALID_CHARACTERS_IN_COLUMN_NAMES. Column Mapping lets
 # Delta store an arbitrary display name against an internal physical one, so
 # the padded header lands untouched rather than needing to be renamed.
+#
+# pipelines.reset.allowed=false blocks full-refresh resets: a full refresh
+# would reprocess every landed file from scratch and discard Auto Loader's
+# incremental state, which is never what we want for append-only bronze.
 BLS_TABLE_PROPERTIES = {
     "delta.columnMapping.mode": "name",
     "delta.minReaderVersion": "2",
     "delta.minWriterVersion": "5",
+    "pipelines.reset.allowed": "false",
 }
 
 
