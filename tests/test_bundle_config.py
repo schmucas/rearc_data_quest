@@ -6,6 +6,7 @@ exists. These encode the conventions in CLAUDE.md; extend them as the project
 grows its own rules.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -14,12 +15,20 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC = REPO_ROOT / "src"
 RESOURCES = REPO_ROOT / "resources"
+DASHBOARD_RESOURCE = RESOURCES / "dashboard.yml"
 
 BANNED_PATH_PREFIXES = ("/dbfs/", "dbfs:/", "/mnt/", "dbutils.fs.")
 
 
 def _bundle() -> dict:
     return yaml.safe_load((REPO_ROOT / "databricks.yml").read_text())
+
+
+def _dashboard_json() -> tuple[dict, Path]:
+    resource = yaml.safe_load(DASHBOARD_RESOURCE.read_text())
+    file_path = resource["resources"]["dashboards"]["rearc_gold_dashboard"]["file_path"]
+    resolved = (RESOURCES / file_path).resolve()
+    return json.loads(resolved.read_text()), resolved
 
 
 def _source_files():
@@ -157,3 +166,45 @@ def test_bronze_never_sets_checkpoint_or_schema_location():
         text = path.read_text()
         assert "checkpointLocation" not in text, f"{path.name} sets checkpointLocation"
         assert "schemaLocation" not in text, f"{path.name} sets schemaLocation"
+
+
+def test_dashboard_resource_declares_dashboards():
+    resource = yaml.safe_load(DASHBOARD_RESOURCE.read_text())
+    assert "dashboards" in resource.get("resources", {}), "dashboard.yml declares no dashboards resource"
+
+
+def test_dashboard_file_path_resolves():
+    resource = yaml.safe_load(DASHBOARD_RESOURCE.read_text())
+    file_path = resource["resources"]["dashboards"]["rearc_gold_dashboard"]["file_path"]
+    resolved = (RESOURCES / file_path).resolve()
+    assert resolved.is_file(), f"dashboard file_path does not resolve to a file: {resolved}"
+
+
+def test_dashboard_json_has_datasets_and_pages():
+    dashboard, _ = _dashboard_json()
+    assert dashboard.get("datasets"), "dashboard JSON has no datasets"
+    assert dashboard.get("pages"), "dashboard JSON has no pages"
+
+
+def test_dashboard_widget_dataset_names_exist():
+    dashboard, _ = _dashboard_json()
+    dataset_names = {d["name"] for d in dashboard["datasets"]}
+    for page in dashboard["pages"]:
+        for entry in page.get("layout", []):
+            for query in entry["widget"].get("queries", []):
+                name = query["query"]["datasetName"]
+                assert name in dataset_names, f"widget references unknown datasetName {name!r}"
+
+
+def test_dashboard_json_has_no_hardcoded_catalog_names():
+    prefix = _bundle()["variables"]["catalog_prefix"]["default"]
+    hardcoded = re.compile(rf"\b{re.escape(prefix)}_(dev|stage|prod)\b")
+    _, path = _dashboard_json()
+    assert not hardcoded.search(path.read_text()), f"{path.name} hardcodes a catalog name"
+
+
+def test_dashboard_references_both_gold_views():
+    dashboard, _ = _dashboard_json()
+    all_sql = " ".join("".join(d.get("queryLines", [])) for d in dashboard["datasets"])
+    for view in ("population_stats", "agg_value_per_year"):
+        assert view in all_sql, f"no dataset queries {view}"

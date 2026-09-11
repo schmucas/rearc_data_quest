@@ -1,9 +1,9 @@
 <div align="center">
 
-# Rearc Data Quest: Databricks Edition
+# Rearc Data Quest on Databricks
 
-Sourcing two public datasets onto Databricks and modelling them through a
-bronze, silver, and gold medallion pipeline, deployed as a Declarative
+Sourcing two public datasets onto Databricks, modelling them through a
+bronze, silver, and gold medallion pipeline, and analyzing BLS Major Sector Productivity and Costs through an AI/BI dashboard, all deployed as a Declarative
 Automation Bundle (DAB) on Databricks Free Edition.
 
 ![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF?logo=githubactions&logoColor=white)
@@ -36,7 +36,6 @@ project.
 - [The idea](#the-idea)
 - [What is in here](#what-is-in-here)
 - [Repo map](#repo-map)
-- [Setup](#setup)
 - [Design notes](#design-notes)
 - [Gotchas worth knowing](#gotchas-worth-knowing)
 - [Reference](#reference)
@@ -236,25 +235,42 @@ is left unmodelled: it is a strict subset of `pr_data_1_alldata`, so modelling
 it too would only duplicate rows.
 
 **Gold layer**, same pipeline + `src/gold/`: three fully qualified
-materialized views. Population summary statistics for 2013 to 2018. Best year
-per series, summed over Q01 to Q04 with Q05 (BLS's annual average, not a
-fifth quarter) excluded, joined out to a human-readable label built from
-`pr_series`'s dimension codes. `PRS30006032`'s Q01 values left-joined with
-population, since BLS's history predates and outlives population's coverage
-and an inner join would silently drop most of the answer. Each analysis is
-implemented twice, once in the PySpark DataFrame API and once in Spark SQL,
-with PySpark as the primary that feeds the table and SQL kept alongside as a
-documented, runnable alternative.
+materialized views. `population_stats`: mean and standard deviation of US
+population, 2013 to 2018, using the population formula rather than the
+sample formula, since the question asks about that exact six-year window,
+not a sample drawn from a larger one. `agg_value_per_year`: summed Q01-Q04
+value per series per year, with `is_best_year` flagging the highest-summed
+year per series, and a human-readable label built from `pr_series`'s
+dimension codes. `value_per_quarter`: the same computation at quarter grain,
+unsummed, with `best_year_per_quarter` flagging the highest-value year
+separately within each series-and-quarter slot. Both per-series views
+left-join population by year rather than keeping a `PRS30006032`-specific
+view: population applies identically to any series in a given year, so
+generalizing the join retired the one narrower, single-series view. Each
+analysis is implemented twice, once in the PySpark DataFrame API and once in
+Spark SQL, with PySpark as the primary that feeds the table and SQL kept
+alongside as a documented, runnable alternative.
 
 Silver and gold run as their own pipeline and their own job
 (`declarative_silver_gold_job`), decoupled from bronze the same way bronze is
 decoupled from sourcing.
 
+**Dashboard**, `resources/dashboard.yml` + `dashboards/rearc_gold.lvdash.json`:
+one AI/BI (Lakeview) dashboard over the gold layer, deployed as a bundle
+resource rather than built by hand in the workspace. It answers the quest's
+three analytical questions directly, for a reviewer who may not have
+workspace access: population's mean and standard deviation, the best year
+(and best quarter) for every series with a human-readable label instead of a
+bare series code, and the history of a chosen series tracked against
+population. `dataset_catalog` and `dataset_schema` on the resource, not a
+literal catalog name inside the dashboard JSON, let every dataset query a
+bare table name and stay portable across dev, stage, and prod.
+
 ## Repo map
 
 ```
 databricks.yml            bundle definition: env + catalog_prefix, 3 targets
-resources/                one file per job or pipeline
+resources/                one file per job, pipeline, or dashboard
 sourcing/                 the fetcher, runs on a GitHub runner, not on Databricks
   bls.py                  listing parser + conditional GET
   datausa.py              query endpoint + hash comparison
@@ -264,6 +280,7 @@ sourcing/                 the fetcher, runs on a GitHub runner, not on Databrick
 src/bronze/               raw landing tables, one per BLS file + DataUSA
 src/silver/               typed, deduplicated tables, one per bronze source
 src/gold/                 gold materialized views, PySpark + SQL implementations
+dashboards/               Lakeview dashboard JSON, deployed via resources/dashboard.yml
 src/setup/                catalogs, schemas, volumes, manifest DDL
 src/utils/                importable helpers, unit tested
 tests/                    bundle guardrails + sourcing unit tests (no Spark)
@@ -272,43 +289,6 @@ tests/                    bundle guardrails + sourcing unit tests (no Spark)
 
 The fetcher lives outside `src/` on purpose: nothing in `sourcing/` ever runs
 on Databricks compute, and nothing it imports is available there.
-
-## Setup
-
-One-time, per workspace:
-
-```bash
-databricks auth login --host <workspace-url>
-databricks bundle run setup_job --target dev
-```
-
-Per code change:
-
-```bash
-databricks bundle deploy --target dev
-databricks bundle run declarative_bronze_ingestion_job --target dev
-databricks bundle run declarative_silver_gold_job --target dev
-```
-
-Fetching new source data (needs `BLS_CONTACT_EMAIL` set, and `setup_job` to
-have already created the target environment's ingest schema):
-
-```bash
-uv run python -m sourcing --env dev
-```
-
-Everything above also happens automatically, on a trigger rather than by hand:
-
-| Trigger | Workflow | Effect |
-|---|---|---|
-| PR to `main` | `pr.yml` | ruff, `bundle validate`, pytest, summary report |
-| Merge to `main` | `deploy-dev.yml` | deploy to `dev` |
-| Tag `v*-rc*` / dispatch | `deploy-stage.yml` | deploy to `stage` |
-| Tag `v*` / dispatch | `deploy-prod.yml` | gated deploy to `prod` |
-| Dispatch | `sourcing.yml` | fetch sources into the selected environment |
-
-Trunk-based: a single `main` plus short-lived feature branches. Deploy targets
-are bundle targets, not git branches.
 
 ## Design notes
 
@@ -400,6 +380,14 @@ and once in Spark SQL, to show fluency in both per the quest's ask. PySpark
 is the primary that feeds the table; the SQL version sits next to it as real,
 runnable, documented code, not a comment.
 
+**`value_per_quarter` exists alongside `agg_value_per_year` rather than
+folding into it.** They answer genuinely different questions at genuinely
+different grains, one row per series-year against one row per
+series-year-quarter. Merging them into a single table would mean either
+double-counting in an accidental `SUM`, or carrying a granularity
+discriminator column that every downstream query would need to filter on
+correctly.
+
 ## Gotchas worth knowing
 
 - **Delta rejects spaces in column names outright**, regardless of table
@@ -428,11 +416,26 @@ runnable, documented code, not a comment.
 - **`variant_get` needs a bracket-quoted path for a key with a space.**
   DataUSA's response uses the literal key `"Nation ID"`; the path is
   `$["Nation ID"]`, not `$.Nation ID`.
+- **AI/BI dashboard resources take `dataset_catalog` and `dataset_schema`,
+  not `default_catalog`/`default_schema`.** The latter don't exist in the
+  schema (verified via `databricks bundle schema`); setting them silently
+  no-ops and leaves every dataset query unable to resolve its catalog.
+- **Editing a bundle-deployed dashboard in the workspace UI embeds a literal
+  catalog name into every dataset**, bypassing `dataset_catalog`/
+  `dataset_schema` entirely and breaking portability to other targets. It
+  also makes the next `bundle deploy` refuse to run (`dashboard has been
+  modified remotely`) until the local file is re-synced from the workspace
+  or the deploy is forced.
+- **Publishing a Lakeview dashboard does not remove edit access.** It
+  creates a separate, read-styled snapshot at a `/published` URL; the
+  editable draft is a different view (drop the `/published` suffix, or open
+  the dashboard from the Workspace browser instead of a shared link).
 
 ## Reference
 
 - [Spark Declarative Pipelines](https://docs.databricks.com/aws/en/dlt/)
 - [Databricks Asset Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/)
+- [AI/BI dashboards](https://docs.databricks.com/aws/en/dashboards/)
 - [Unity Catalog volumes](https://docs.databricks.com/aws/en/volumes/)
 - [Auto Loader options](https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/options)
 - [Delta column mapping](https://docs.databricks.com/aws/en/delta/column-mapping)

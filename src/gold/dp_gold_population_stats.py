@@ -23,7 +23,7 @@ def _population_stats_pyspark():
         population_stddev_samp, population_stddev_pop.
     """
     return (
-        spark.read.table("population")
+        spark.read.table(f"{CATALOG}.silver.population")
         .filter((F.col("year") >= START_YEAR) & (F.col("year") <= END_YEAR))
         .agg(
             F.count("year").alias("year_count"),
@@ -47,13 +47,14 @@ def _population_stats_sql():
             MEAN(population) AS population_mean,
             STDDEV_SAMP(population) AS population_stddev_samp,
             STDDEV_POP(population) AS population_stddev_pop
-        FROM population
+        FROM {CATALOG}.silver.population
         WHERE year BETWEEN {START_YEAR} AND {END_YEAR}
     """)
 
 
-# PySpark is primary. Report population_stddev_samp -- these 6 years are a
-# sample, not the full population of possible years.
+# PySpark is primary. Report population_stddev_pop -- 2013-2018 is the exact
+# set the question asks about, not a sample used to estimate a larger
+# population of years.
 @dp.materialized_view(
     name=f"{CATALOG}.gold.population_stats",
     comment="Mean and standard deviation of US population, 2013-2018.",
