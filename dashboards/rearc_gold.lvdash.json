@@ -1,65 +1,15 @@
 {
   "datasets": [
     {
-      "catalog": "rearc_dev",
-      "displayName": "Population stats",
       "name": "ds_population_stats",
+      "displayName": "Population stats",
       "queryLines": [
         "SELECT year_count, population_mean, population_stddev_samp, population_stddev_pop FROM population_stats"
-      ],
-      "schema": "gold"
+      ]
     },
     {
-      "catalog": "rearc_dev",
-      "displayName": "Agg value per year",
       "name": "ds_best_year_per_series",
-      "parameters": [
-        {
-          "dataType": "STRING",
-          "defaultSelection": {
-            "values": {
-              "dataType": "STRING",
-              "values": [
-                {
-                  "value": "All"
-                }
-              ]
-            }
-          },
-          "displayName": "series_id",
-          "keyword": "series_id"
-        },
-        {
-          "dataType": "STRING",
-          "defaultSelection": {
-            "values": {
-              "dataType": "STRING",
-              "values": [
-                {
-                  "value": "All"
-                }
-              ]
-            }
-          },
-          "displayName": "sector",
-          "keyword": "sector"
-        },
-        {
-          "dataType": "STRING",
-          "defaultSelection": {
-            "values": {
-              "dataType": "STRING",
-              "values": [
-                {
-                  "value": "All"
-                }
-              ]
-            }
-          },
-          "displayName": "measure",
-          "keyword": "measure"
-        }
-      ],
+      "displayName": "Agg value per year",
       "queryLines": [
         "SELECT series_id, \n",
         "       sector_name, \n",
@@ -74,14 +24,10 @@
         "and (case when :measure = 'All' then TRUE else measure_text = :measure end)\n",
         "ORDER BY summed_value DESC"
       ],
-      "schema": "gold"
-    },
-    {
-      "catalog": "rearc_dev",
-      "displayName": "best year series",
-      "name": "ds_series_count",
       "parameters": [
         {
+          "displayName": "series_id",
+          "keyword": "series_id",
           "dataType": "STRING",
           "defaultSelection": {
             "values": {
@@ -92,11 +38,43 @@
                 }
               ]
             }
-          },
-          "displayName": "series_id",
-          "keyword": "series_id"
+          }
+        },
+        {
+          "displayName": "sector",
+          "keyword": "sector",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "measure",
+          "keyword": "measure",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
         }
-      ],
+      ]
+    },
+    {
+      "name": "ds_series_count",
+      "displayName": "best year series",
       "queryLines": [
         "SELECT case when :series_id = 'All' then 0 else max(year) end best_year,\n",
         "    case when :series_id = 'All' then 0 else max(summed_value) end best_year_value\n",
@@ -104,23 +82,10 @@
         "where (case when :series_id = 'All' then TRUE else series_id = :series_id end)\n",
         "and is_best_year = true"
       ],
-      "schema": "gold"
-    },
-    {
-      "catalog": "rearc_dev",
-      "displayName": "Every year's total, per series",
-      "name": "ds_series_year_history",
-      "queryLines": [
-        "SELECT series_id, sector_name, measure_text, year, summed_value FROM agg_value_per_year ORDER BY year"
-      ],
-      "schema": "gold"
-    },
-    {
-      "catalog": "rearc_dev",
-      "displayName": "value per quarter",
-      "name": "0530d607",
       "parameters": [
         {
+          "displayName": "series_id",
+          "keyword": "series_id",
           "dataType": "STRING",
           "defaultSelection": {
             "values": {
@@ -131,26 +96,20 @@
                 }
               ]
             }
-          },
-          "displayName": "series_id",
-          "keyword": "series_id"
-        },
-        {
-          "dataType": "STRING",
-          "defaultSelection": {
-            "values": {
-              "dataType": "STRING",
-              "values": [
-                {
-                  "value": "Q01"
-                }
-              ]
-            }
-          },
-          "displayName": "quarter",
-          "keyword": "quarter"
+          }
         }
-      ],
+      ]
+    },
+    {
+      "name": "ds_series_year_history",
+      "displayName": "Every year's total, per series",
+      "queryLines": [
+        "SELECT series_id, sector_name, measure_text, year, summed_value FROM agg_value_per_year ORDER BY year"
+      ]
+    },
+    {
+      "name": "0530d607",
+      "displayName": "value per quarter",
       "queryLines": [
         "SELECT series_id, \n",
         "       sector_name, \n",
@@ -165,24 +124,10 @@
         "and period = :quarter\n",
         "ORDER BY value DESC"
       ],
-      "schema": "gold"
-    },
-    {
-      "catalog": "rearc_dev",
-      "displayName": "Quarters",
-      "name": "f335b19c",
-      "queryLines": [
-        "select distinct period\n",
-        "from value_per_quarter"
-      ],
-      "schema": "gold"
-    },
-    {
-      "catalog": "rearc_dev",
-      "displayName": "best quarter series",
-      "name": "9a01aee7",
       "parameters": [
         {
+          "displayName": "series_id",
+          "keyword": "series_id",
           "dataType": "STRING",
           "defaultSelection": {
             "values": {
@@ -193,11 +138,11 @@
                 }
               ]
             }
-          },
-          "displayName": "series_id",
-          "keyword": "series_id"
+          }
         },
         {
+          "displayName": "quarter",
+          "keyword": "quarter",
           "dataType": "STRING",
           "defaultSelection": {
             "values": {
@@ -208,11 +153,21 @@
                 }
               ]
             }
-          },
-          "displayName": "quarter",
-          "keyword": "quarter"
+          }
         }
-      ],
+      ]
+    },
+    {
+      "name": "f335b19c",
+      "displayName": "Quarters",
+      "queryLines": [
+        "select distinct period\n",
+        "from value_per_quarter"
+      ]
+    },
+    {
+      "name": "9a01aee7",
+      "displayName": "best quarter series",
       "queryLines": [
         "SELECT case when :series_id = 'All' then 0 else max(year) end best_year,\n",
         "    case when :series_id = 'All' then 0 else max(value) end best_year_value\n",
@@ -221,68 +176,94 @@
         "and period = :quarter\n",
         "and best_year_per_quarter = true"
       ],
-      "schema": "gold"
+      "parameters": [
+        {
+          "displayName": "series_id",
+          "keyword": "series_id",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "quarter",
+          "keyword": "quarter",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "Q01"
+                }
+              ]
+            }
+          }
+        }
+      ]
     }
   ],
   "pages": [
     {
+      "name": "overview",
       "displayName": "Overview",
       "layout": [
         {
-          "position": {
-            "height": 1,
-            "width": 12,
-            "x": 0,
-            "y": 0
-          },
           "widget": {
+            "name": "title-main",
             "multilineTextboxSpec": {
               "lines": [
                 "## Rearc Data Quest — Gold Layer Dashboard"
               ]
-            },
-            "name": "title-main"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
           }
         },
         {
-          "position": {
-            "height": 1,
-            "width": 12,
-            "x": 0,
-            "y": 1
-          },
           "widget": {
+            "name": "subtitle-main",
             "multilineTextboxSpec": {
               "lines": [
                 "This dashboard combines two public datasets: the Bureau of Labor Statistics' Productivity and Costs program (\"PR\" data) — quarterly measures like output per hour, hours worked, and labor costs across major US industries — and the Census Bureau's annual US population estimates."
               ]
-            },
-            "name": "subtitle-main"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 1
           }
         },
         {
-          "position": {
-            "height": 1,
-            "width": 12,
-            "x": 0,
-            "y": 2
-          },
           "widget": {
+            "name": "section1-title",
             "multilineTextboxSpec": {
               "lines": [
                 "### Mean and standard deviation of the annual US population, 2013–2018"
               ]
-            },
-            "name": "section1-title"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 12,
+            "height": 1
           }
         },
         {
-          "position": {
-            "height": 4,
-            "width": 4,
-            "x": 0,
-            "y": 3
-          },
           "widget": {
             "name": "counter-population-mean",
             "queries": [
@@ -290,13 +271,13 @@
                 "name": "main_query",
                 "query": {
                   "datasetName": "ds_population_stats",
-                  "disaggregated": true,
                   "fields": [
                     {
-                      "expression": "`population_mean`",
-                      "name": "population_mean"
+                      "name": "population_mean",
+                      "expression": "`population_mean`"
                     }
-                  ]
+                  ],
+                  "disaggregated": true
                 }
               }
             ],
@@ -325,15 +306,15 @@
               "version": 2,
               "widgetType": "counter"
             }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 4,
+            "height": 4
           }
         },
         {
-          "position": {
-            "height": 4,
-            "width": 4,
-            "x": 4,
-            "y": 3
-          },
           "widget": {
             "name": "counter-population-stddev-pop",
             "queries": [
@@ -341,13 +322,13 @@
                 "name": "main_query",
                 "query": {
                   "datasetName": "ds_population_stats",
-                  "disaggregated": true,
                   "fields": [
                     {
-                      "expression": "`population_stddev_pop`",
-                      "name": "population_stddev_pop"
+                      "name": "population_stddev_pop",
+                      "expression": "`population_stddev_pop`"
                     }
-                  ]
+                  ],
+                  "disaggregated": true
                 }
               }
             ],
@@ -376,15 +357,15 @@
               "version": 2,
               "widgetType": "counter"
             }
+          },
+          "position": {
+            "x": 4,
+            "y": 3,
+            "width": 4,
+            "height": 4
           }
         },
         {
-          "position": {
-            "height": 4,
-            "width": 4,
-            "x": 8,
-            "y": 3
-          },
           "widget": {
             "name": "counter-year-count",
             "queries": [
@@ -392,13 +373,13 @@
                 "name": "main_query",
                 "query": {
                   "datasetName": "ds_population_stats",
-                  "disaggregated": true,
                   "fields": [
                     {
-                      "expression": "`year_count`",
-                      "name": "year_count"
+                      "name": "year_count",
+                      "expression": "`year_count`"
                     }
-                  ]
+                  ],
+                  "disaggregated": true
                 }
               }
             ],
@@ -427,15 +408,15 @@
               "version": 2,
               "widgetType": "counter"
             }
+          },
+          "position": {
+            "x": 8,
+            "y": 3,
+            "width": 4,
+            "height": 4
           }
         },
         {
-          "position": {
-            "height": 3,
-            "width": 12,
-            "x": 0,
-            "y": 7
-          },
           "widget": {
             "name": "table-population-stddev-samp",
             "queries": [
@@ -443,13 +424,13 @@
                 "name": "main_query",
                 "query": {
                   "datasetName": "ds_population_stats",
-                  "disaggregated": true,
                   "fields": [
                     {
-                      "expression": "`population_stddev_samp`",
-                      "name": "population_stddev_samp"
+                      "name": "population_stddev_samp",
+                      "expression": "`population_stddev_samp`"
                     }
-                  ]
+                  ],
+                  "disaggregated": true
                 }
               }
             ],
@@ -480,47 +461,47 @@
               "version": 2,
               "widgetType": "table"
             }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 12,
+            "height": 3
           }
         },
         {
-          "position": {
-            "height": 1,
-            "width": 12,
-            "x": 0,
-            "y": 10
-          },
           "widget": {
+            "name": "section2-title",
             "multilineTextboxSpec": {
               "lines": [
                 "### Which year was strongest for each BLS series?"
               ]
-            },
-            "name": "section2-title"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 12,
+            "height": 1
           }
         },
         {
-          "position": {
-            "height": 2,
-            "width": 12,
-            "x": 0,
-            "y": 14
-          },
           "widget": {
+            "name": "section2-description",
             "multilineTextboxSpec": {
               "lines": [
                 "The Bureau of Labor Statistics tracks 237 separate productivity measurements — each one a specific combination of industry and metric, like \"Manufacturing — output per hour.\" For any one of those 237 selected, the table below shows the value/measure added up across each year's four quarters (BLS also publishes a separate whole-year average figure \"Q5\", which is left out here so it doesn't get counted twice). If two years tie, the earlier one is shown."
               ]
-            },
-            "name": "section2-description"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 14,
+            "width": 12,
+            "height": 2
           }
         },
         {
-          "position": {
-            "height": 3,
-            "width": 5,
-            "x": 0,
-            "y": 11
-          },
           "widget": {
             "name": "filter-series-id",
             "queries": [
@@ -528,69 +509,69 @@
                 "name": "dashboards/01f1ad5fafa01654a06ddb1fb81b1ca7/datasets/01f1ae31c34417a68ba36cead02025f4_series_id",
                 "query": {
                   "datasetName": "ds_series_year_history",
-                  "disaggregated": false,
                   "fields": [
                     {
-                      "expression": "`series_id`",
-                      "name": "series_id"
+                      "name": "series_id",
+                      "expression": "`series_id`"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "series_id_associativity"
+                      "name": "series_id_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               },
               {
                 "name": "parameter_dashboards/01f1ad5fafa01654a06ddb1fb81b1ca7/datasets/01f1ae31c34417a59ba7bd95b8c683fd_series_id",
                 "query": {
                   "datasetName": "ds_best_year_per_series",
-                  "disaggregated": false,
                   "parameters": [
                     {
-                      "keyword": "series_id",
-                      "name": "series_id"
+                      "name": "series_id",
+                      "keyword": "series_id"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               },
               {
                 "name": "parameter_dashboards/01f1ad5fafa01654a06ddb1fb81b1ca7/datasets/01f1ae31c34417a5a3a12ba042f1fa7f_series_id",
                 "query": {
                   "datasetName": "ds_series_count",
-                  "disaggregated": false,
                   "parameters": [
                     {
-                      "keyword": "series_id",
-                      "name": "series_id"
+                      "name": "series_id",
+                      "keyword": "series_id"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               },
               {
                 "name": "parameter_dashboards/01f1ad5fafa01654a06ddb1fb81b1ca7/datasets/01f1ae31c34417a784f713e2afe399f4_series_id",
                 "query": {
                   "datasetName": "0530d607",
-                  "disaggregated": false,
                   "parameters": [
                     {
-                      "keyword": "series_id",
-                      "name": "series_id"
+                      "name": "series_id",
+                      "keyword": "series_id"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               },
               {
                 "name": "parameter_dashboards/01f1ad5fafa01654a06ddb1fb81b1ca7/datasets/01f1ae34084c1d6cbbb5bd6f4cb2fbb7_series_id",
                 "query": {
                   "datasetName": "9a01aee7",
-                  "disaggregated": false,
                   "parameters": [
                     {
-                      "keyword": "series_id",
-                      "name": "series_id"
+                      "name": "series_id",
+                      "keyword": "series_id"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               }
             ],
@@ -629,15 +610,15 @@
               "version": 2,
               "widgetType": "filter-single-select"
             }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 5,
+            "height": 3
           }
         },
         {
-          "position": {
-            "height": 3,
-            "width": 7,
-            "x": 5,
-            "y": 11
-          },
           "widget": {
             "name": "counter-series-count",
             "queries": [
@@ -645,15 +626,14 @@
                 "name": "main_query",
                 "query": {
                   "datasetName": "ds_series_count",
-                  "disaggregated": true,
                   "fields": [
                     {
-                      "expression": "`best_year_value`",
-                      "name": "best_year_value"
+                      "name": "best_year_value",
+                      "expression": "`best_year_value`"
                     },
                     {
-                      "expression": "`best_year`",
-                      "name": "best_year"
+                      "name": "best_year",
+                      "expression": "`best_year`"
                     }
                   ],
                   "parameterValues": [
@@ -661,7 +641,8 @@
                       "keyword": "series_id",
                       "selection": {}
                     }
-                  ]
+                  ],
+                  "disaggregated": true
                 }
               }
             ],
@@ -713,15 +694,15 @@
               "version": 2,
               "widgetType": "counter"
             }
+          },
+          "position": {
+            "x": 5,
+            "y": 11,
+            "width": 7,
+            "height": 3
           }
         },
         {
-          "position": {
-            "height": 6,
-            "width": 12,
-            "x": 0,
-            "y": 16
-          },
           "widget": {
             "name": "bar-chart-best-year-counts",
             "queries": [
@@ -729,21 +710,21 @@
                 "name": "main_query",
                 "query": {
                   "datasetName": "ds_best_year_per_series",
-                  "disaggregated": false,
                   "fields": [
                     {
-                      "expression": "`year`",
-                      "name": "year"
+                      "name": "year",
+                      "expression": "`year`"
                     },
                     {
-                      "expression": "AVG(`summed_value`)",
-                      "name": "avg(summed_value)"
+                      "name": "avg(summed_value)",
+                      "expression": "AVG(`summed_value`)"
                     },
                     {
-                      "expression": "`label`",
-                      "name": "label"
+                      "name": "label",
+                      "expression": "`label`"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               }
             ],
@@ -848,15 +829,15 @@
               "version": 3,
               "widgetType": "bar"
             }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 12,
+            "height": 6
           }
         },
         {
-          "position": {
-            "height": 7,
-            "width": 12,
-            "x": 0,
-            "y": 26
-          },
           "widget": {
             "name": "e0cf4aa9",
             "queries": [
@@ -864,25 +845,25 @@
                 "name": "main_query",
                 "query": {
                   "datasetName": "0530d607",
-                  "disaggregated": false,
                   "fields": [
                     {
-                      "expression": "`year`",
-                      "name": "year"
+                      "name": "year",
+                      "expression": "`year`"
                     },
                     {
-                      "expression": "AVG(`value`)",
-                      "name": "avg(value)"
+                      "name": "avg(value)",
+                      "expression": "AVG(`value`)"
                     },
                     {
-                      "expression": "SUM(`population`)",
-                      "name": "sum(population)"
+                      "name": "sum(population)",
+                      "expression": "SUM(`population`)"
                     },
                     {
-                      "expression": "`label`",
-                      "name": "label"
+                      "name": "label",
+                      "expression": "`label`"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               }
             ],
@@ -1015,31 +996,31 @@
               "version": 1,
               "widgetType": "combo"
             }
+          },
+          "position": {
+            "x": 0,
+            "y": 26,
+            "width": 12,
+            "height": 7
           }
         },
         {
-          "position": {
-            "height": 1,
-            "width": 12,
-            "x": 0,
-            "y": 22
-          },
           "widget": {
+            "name": "b3e9faf9",
             "multilineTextboxSpec": {
               "lines": [
                 "### Which year was strongest quarter?"
               ]
-            },
-            "name": "b3e9faf9"
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 22,
+            "width": 12,
+            "height": 1
           }
         },
         {
-          "position": {
-            "height": 3,
-            "width": 5,
-            "x": 0,
-            "y": 23
-          },
           "widget": {
             "name": "quarter",
             "queries": [
@@ -1047,30 +1028,30 @@
                 "name": "dashboards/01f1ad5fafa01654a06ddb1fb81b1ca7/datasets/01f1ae32ff0b15a68b37204ee4ae559c_period",
                 "query": {
                   "datasetName": "f335b19c",
-                  "disaggregated": false,
                   "fields": [
                     {
-                      "expression": "`period`",
-                      "name": "period"
+                      "name": "period",
+                      "expression": "`period`"
                     },
                     {
-                      "expression": "COUNT_IF(`associative_filter_predicate_group`)",
-                      "name": "period_associativity"
+                      "name": "period_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               },
               {
                 "name": "parameter_dashboards/01f1ad5fafa01654a06ddb1fb81b1ca7/datasets/01f1ae31c34417a784f713e2afe399f4_quarter",
                 "query": {
                   "datasetName": "0530d607",
-                  "disaggregated": false,
                   "parameters": [
                     {
-                      "keyword": "quarter",
-                      "name": "quarter"
+                      "name": "quarter",
+                      "keyword": "quarter"
                     }
-                  ]
+                  ],
+                  "disaggregated": false
                 }
               }
             ],
@@ -1109,15 +1090,15 @@
               "version": 2,
               "widgetType": "filter-single-select"
             }
+          },
+          "position": {
+            "x": 0,
+            "y": 23,
+            "width": 5,
+            "height": 3
           }
         },
         {
-          "position": {
-            "height": 3,
-            "width": 7,
-            "x": 5,
-            "y": 23
-          },
           "widget": {
             "name": "27f6e62f",
             "queries": [
@@ -1125,15 +1106,14 @@
                 "name": "main_query",
                 "query": {
                   "datasetName": "9a01aee7",
-                  "disaggregated": true,
                   "fields": [
                     {
-                      "expression": "`best_year_value`",
-                      "name": "best_year_value"
+                      "name": "best_year_value",
+                      "expression": "`best_year_value`"
                     },
                     {
-                      "expression": "`best_year`",
-                      "name": "best_year"
+                      "name": "best_year",
+                      "expression": "`best_year`"
                     }
                   ],
                   "parameterValues": [
@@ -1141,7 +1121,8 @@
                       "keyword": "series_id",
                       "selection": {}
                     }
-                  ]
+                  ],
+                  "disaggregated": true
                 }
               }
             ],
@@ -1193,23 +1174,23 @@
               "version": 2,
               "widgetType": "counter"
             }
+          },
+          "position": {
+            "x": 5,
+            "y": 23,
+            "width": 7,
+            "height": 3
           }
         }
       ],
-      "layoutVersion": "GRID_V1",
-      "name": "overview",
-      "pageType": "PAGE_TYPE_CANVAS"
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
     },
     {
+      "name": "1407b06b",
       "displayName": "Global Filters",
       "layout": [
         {
-          "position": {
-            "height": 2,
-            "width": 1,
-            "x": 0,
-            "y": 0
-          },
           "widget": {
             "name": "e77adae1",
             "spec": {
@@ -1220,28 +1201,40 @@
               "version": 2,
               "widgetType": "filter-single-select"
             }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
           }
         }
       ],
-      "layoutVersion": "GRID_V1",
-      "name": "1407b06b",
-      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
     }
   ],
   "uiSettings": {
-    "applyModeEnabled": false,
     "theme": {
       "canvasBackgroundColor": {
-        "dark": "#1F272D",
-        "light": "#FCFCFC"
+        "light": "#FCFCFC",
+        "dark": "#1F272D"
+      },
+      "widgetBackgroundColor": {
+        "light": "#FFFFFF",
+        "dark": "#11171C"
+      },
+      "widgetBorderColor": {
+        "light": "#FFFFFF",
+        "dark": "#11171C"
       },
       "fontColor": {
-        "dark": "#E8ECF0",
-        "light": "#11171C"
+        "light": "#11171C",
+        "dark": "#E8ECF0"
       },
       "selectionColor": {
-        "dark": "#8ACAFF",
-        "light": "#0072B2"
+        "light": "#0072B2",
+        "dark": "#8ACAFF"
       },
       "visualizationColors": [
         "#0072B2",
@@ -1251,15 +1244,8 @@
         "#D55E00",
         "#56B4E9"
       ],
-      "widgetBackgroundColor": {
-        "dark": "#11171C",
-        "light": "#FFFFFF"
-      },
-      "widgetBorderColor": {
-        "dark": "#11171C",
-        "light": "#FFFFFF"
-      },
       "widgetHeaderAlignment": "LEFT"
-    }
+    },
+    "applyModeEnabled": false
   }
 }
