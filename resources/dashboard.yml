@@ -1,0 +1,16 @@
+# AI/BI (Lakeview) dashboard over the gold layer -- the quest's bonus ask.
+# dataset_catalog / dataset_schema let dashboards/rearc_gold.lvdash.json query
+# bare table names, same as every other resource derives its catalog from
+# catalog_prefix + env.
+
+resources:
+  dashboards:
+    rearc_gold_dashboard:
+      display_name: Rearc Data Quest - Productivity and Population
+      file_path: ../dashboards/rearc_gold.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      dataset_catalog: ${var.catalog_prefix}_${var.env}
+      dataset_schema: gold
+      permissions:
+        - user_name: ${var.workspace_user}
+          level: CAN_MANAGE
