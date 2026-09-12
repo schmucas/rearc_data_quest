@@ -538,6 +538,15 @@ the only part that touches the public internet.
 
 ![A source fetch run landing into prod](docs/images/source-fetch-landing.png)
 
+#### Prod deploys wait for approval
+
+A release tag starts `Deploy → Prod`, and the run sits at **Waiting** until
+someone approves the `production` environment. Nothing reaches prod
+unattended — and because the gate is a GitHub Environment, the approval and its
+comment are recorded on the run itself.
+
+![The production environment approval gate holding a tagged deploy](docs/images/github-prod-approval-gate.png)
+
 ---
 
 <div align="center">
