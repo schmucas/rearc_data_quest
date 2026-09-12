@@ -143,7 +143,7 @@ flowchart LR
 
 | # | Stage | Runs on | Triggered by |
 |---|---|---|---|
-| **1** | Source and land | GitHub Actions runner | manual dispatch |
+| **1** | Source and land | GitHub Actions runner | own cron, 8x a year *(paused)* |
 | **2** | Bronze | Lakeflow Declarative Pipeline | own cron, 8x a year *(paused)* |
 | **3** | Silver and gold | Lakeflow Declarative Pipeline | own cron, 8x a year *(paused)* |
 
@@ -153,18 +153,22 @@ then revised for each quarter. They ship **paused**, so unpausing is a
 deliberate per-environment act rather than something a deploy does for you.
 Every stage can also be run by hand at any time.
 
+Sourcing's cron mirrors this from the GitHub Actions side: one trigger an hour
+ahead of stage's bronze run, one an hour ahead of prod's, so landing data
+exists before bronze reads it. GitHub Actions has no per-schedule pause flag
+like `pause_status`. Instead the fetch job carries a condition that no-ops on
+a scheduled run, so the trigger sits in the workflow file doing nothing until
+that condition is removed.
+
 **Nothing triggers anything else.**
 
 - **Sourcing** triggers nothing downstream.
-- **Bronze** checks the landing volume for new files on its own schedule, rather
-  than being told about them.
-- **Silver and gold** checks bronze's tables on its own schedule, rather than
-  waiting for a bronze run to finish.
+- **Bronze** checks the landing volume for new files on its own schedule
+- **Silver and gold** checks bronze's tables on its own schedule, optimized for cost and downstream latency requirements
 
 Two things that buys: each stage's **cadence can be tuned to what it actually
-needs** — silver and gold faster or slower than ingestion, without touching
-ingestion — and **any stage can be re-run alone**, which is what makes debugging
-and backfills cheap.
+needs** — silver and gold slower or equal to ingestion leaving flexibility for
+cost and downstream latency requirements. 
 
 ---
 
