@@ -573,7 +573,7 @@ half-finished chart ever appearing in front of a consumer.
 
 ![The dashboard deployed in dev, stage and prod](docs/images/dashboards-env-stage-prod-environments.png)
 
-### The three answers
+### Answering three questions
 
 **Question 1 — mean and standard deviation of the annual US population,
 2013 to 2018.** Read straight off the counters, with the year count confirming
