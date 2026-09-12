@@ -379,6 +379,15 @@ population. `dataset_catalog` and `dataset_schema` on the resource, not a
 literal catalog name inside the dashboard JSON, let every dataset query a
 bare table name and stay portable across dev, stage, and prod.
 
+**Maintenance**, `resources/maintenance.yml` + `src/maintenance/`: a job that
+runs `OPTIMIZE` across every table in `bronze`, `silver` and `gold`, with an
+optional `VACUUM` behind a `run_vacuum` parameter that defaults to off. It comes
+from the project template and nothing here requires it: predictive optimization
+already handles this on managed Unity Catalog tables. It is kept because every
+bronze table uses `cluster_by_auto=True`, so having a one-command way to force a
+rewrite makes it easy to see what a clustering change actually does to file
+layout and query performance. Not scheduled on any target.
+
 ## Repo map
 
 ```
@@ -395,6 +404,7 @@ src/silver/               typed, deduplicated tables, one per bronze source
 src/gold/                 gold materialized views, PySpark + SQL implementations
 dashboards/               Lakeview dashboard JSON, deployed via resources/dashboard.yml
 src/setup/                catalogs, schemas, volumes, manifest DDL
+src/maintenance/          OPTIMIZE across all schemas, optional VACUUM
 src/utils/                importable helpers, unit tested
 tests/                    bundle guardrails + sourcing unit tests (no Spark)
 .github/workflows/        pr, deploy-dev, deploy-stage, deploy-prod, sourcing
