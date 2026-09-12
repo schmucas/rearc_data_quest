@@ -37,7 +37,7 @@ was not good enough and the work was taken over by hand, how databricks DABs hel
 
 ## Contents
 
-- [The idea](#the-idea)
+- [The architecture](#the-architecture)
 - [What is in here](#what-is-in-here)
 - [How it looks](#how-it-looks)
 - [Repo map](#repo-map)
@@ -45,29 +45,22 @@ was not good enough and the work was taken over by hand, how databricks DABs hel
 - [Trade-offs](#trade-offs)
 - [Reference](#reference)
 
-## The idea
+## The architecture
 
-Databricks Free Edition restricts outbound internet access from serverless
-compute to a small allowlist of trusted domains. Neither BLS nor DataUSA is on
-it, so a notebook calling either fails at DNS resolution, not the HTTP layer.
-That constraint shapes the whole design: ingestion has to run somewhere that
-can reach the network, and everything from there in has to run on Databricks,
-deployed as code.
+### The constraint that shapes everything
 
-The answer: a fetcher that lives outside Databricks entirely (a GitHub Actions
-runner, [`sourcing/`](sourcing/README.md)), pushing raw bytes and a record of
-what it did into Unity Catalog. Two Lakeflow Declarative Pipelines, each deployed via the same
-Databricks Asset Bundle, turn those landed files into a bronze, silver, and
-gold medallion. The three stages, source and land, bronze, and silver and
-gold, run as three separately triggered units: a GitHub Actions workflow, and
-two Databricks Jobs that each refresh a declarative pipeline. They are
-deliberately decoupled: sourcing triggers nothing downstream, bronze checks
-the landing volume for new files on its own schedule rather than being told
-about them, and silver and gold checks bronze's tables on its own schedule
-rather than being triggered when a bronze run finishes. That decoupling
-means silver and gold's schedule can be tuned to what downstream consumers
-actually need, faster or slower than ingestion, without touching ingestion
-at all.
+**Databricks Free Edition blocks outbound internet** from serverless compute to
+all but a small allowlist of trusted domains. Neither BLS nor DataUSA is on it,
+so a notebook calling either **fails at DNS resolution** rather than at the HTTP
+layer — the error never names the real cause.
+
+Three consequences, and the whole design follows from them:
+
+- **Ingestion runs where the network is** — a GitHub Actions runner, not a
+  notebook.
+- **Everything downstream runs on Databricks**, deployed as code.
+- **Unity Catalog is the boundary.** Raw bytes and an audit record cross into it;
+  nothing else does.
 
 <div align="center">
   <picture>
@@ -146,10 +139,153 @@ flowchart LR
   linkStyle default stroke:#4b5563,stroke-width:3px
 ```
 
-On a paid workspace the network constraint would not exist: serverless has
-full outbound access unless a restricted network policy is applied, and the
-fetcher would run as a notebook task with no other change. The medallion
-split and the decoupled scheduling would stay exactly the same.
+### Three stages, deliberately decoupled
+
+| # | Stage | Runs on | Triggered by |
+|---|---|---|---|
+| **1** | Source and land | GitHub Actions runner | manual dispatch |
+| **2** | Bronze | Lakeflow Declarative Pipeline | own cron, 8x a year *(paused)* |
+| **3** | Silver and gold | Lakeflow Declarative Pipeline | own cron, 8x a year *(paused)* |
+
+The Databricks schedules fire on the **7th of eight months a year**, matching
+BLS's publication rhythm — Productivity and Costs is released preliminary and
+then revised for each quarter. They ship **paused**, so unpausing is a
+deliberate per-environment act rather than something a deploy does for you.
+Every stage can also be run by hand at any time.
+
+**Nothing triggers anything else.**
+
+- **Sourcing** triggers nothing downstream.
+- **Bronze** checks the landing volume for new files on its own schedule, rather
+  than being told about them.
+- **Silver and gold** checks bronze's tables on its own schedule, rather than
+  waiting for a bronze run to finish.
+
+Two things that buys: each stage's **cadence can be tuned to what it actually
+needs** — silver and gold faster or slower than ingestion, without touching
+ingestion — and **any stage can be re-run alone**, which is what makes debugging
+and backfills cheap.
+
+---
+
+### 1 · The fetcher, outside Databricks
+
+[`sourcing/`](sourcing/README.md) is a small Python package that runs on a
+GitHub Actions runner.
+
+It keeps a **manifest**: a Delta table recording what the fetcher did. One row
+for every file it looked at, every time it ran — downloaded, skipped because
+nothing had changed, or failed, with the size, the hash and where it landed.
+Nothing is ever overwritten, so the table is both the fetcher's **memory** (what
+did I see last time?) and a complete, queryable **audit trail** (what happened,
+when, and to which file?).
+
+Per run the fetcher:
+
+1. **Reads the manifest** for the last successful fetch of each dataset.
+2. **Parses the BLS directory listing** — filenames are never hardcoded, so a
+   file BLS adds or removes needs no code change.
+3. **Asks only for what changed** — a conditional `GET` for BLS, a body hash for
+   DataUSA, which has no cache validators.
+4. **Lands changed bytes** on the volume under a fresh timestamped path.
+5. **Appends one manifest row per item**, whether it landed, was unchanged, or
+   failed.
+
+The whole run finishes in **under a minute**. When nothing has changed, none of
+the twelve BLS files cross the wire at all — the server answers `304` and the
+body is never sent. The population document is different: with no validators to
+condition on, it has to be downloaded before it can be hashed. It is a couple of
+KB against BLS's 4.9 MB, so what matters is that **neither source lands a new
+file, and both still get a manifest row recording that the check happened**.
+
+**The ordering is the failure design: download → upload → write the row, never
+the reverse.**
+
+```mermaid
+flowchart TD
+  MANR[("`**source_manifest**
+  latest FETCHED row per dataset`")]:::store
+  LIST["`**GET** the BLS directory listing`"]:::net
+  Q{"`Fetched this
+  file before?`"}:::decide
+  COND["`**GET** + If-Modified-Since`"]:::net
+  PLAIN["`**GET**`"]:::net
+  UP["`Upload to the **landing volume**`"]:::step
+  FET["`**FETCHED**
+  bytes landed`"]:::ok
+  UNCH["`**UNCHANGED**
+  nothing transferred`"]:::skip
+  ERR["`**ERROR**
+  nothing landed`"]:::bad
+  MANW[("`**source_manifest**
+  one row per item, per run`")]:::store
+
+  MANR ==>|"read"| LIST
+  LIST ==> Q
+  Q ==>|"yes"| COND
+  Q ==>|"no, first sighting"| PLAIN
+  COND ==>|"200 OK"| PLAIN
+  COND -.->|"304 Not Modified"| UNCH
+  PLAIN ==> UP
+  PLAIN -.->|"timeout · 4xx · 5xx"| ERR
+  UP ==> FET
+  FET ==>|"append"| MANW
+  UNCH ==>|"append"| MANW
+  ERR ==>|"append"| MANW
+
+  classDef store  fill:#38bdf8,stroke:#0284c7,stroke-width:2px,color:#ffffff
+  classDef net    fill:#6b7280,stroke:#374151,stroke-width:2px,color:#ffffff
+  classDef step   fill:#ffffff,stroke:#4b5563,stroke-width:2px,color:#1f2328
+  classDef decide fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
+  classDef ok     fill:#3dba6f,stroke:#217a44,stroke-width:2px,color:#ffffff
+  classDef skip   fill:#e5e7eb,stroke:#6b7280,stroke-width:2px,color:#1f2328
+  classDef bad    fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#ffffff
+
+  linkStyle default stroke:#4b5563,stroke-width:2px
+```
+
+**The manifest is both ends of the loop**: the run opens by reading the last
+successful fetch per dataset to build its conditional headers, and closes by
+appending one row per item — landed, unchanged or failed alike.
+
+In that order every failure degrades to the same bytes landing twice under two
+timestamps, which the silver upsert collapses harmlessly. Reversed, a failed
+upload leaves a row claiming the file is landed and it is **never fetched
+again** — silent, permanent, unreported. There is no rollback: landing is
+immutable, so **recovery is a re-run**, and an immediate re-run is a no-op.
+
+> Full detail — BLS's contact-header policy, keeping load off a public
+> government server, and exactly what happens when a source file is added,
+> changed or removed — is in
+> **[`sourcing/README.md`](sourcing/README.md)**.
+
+---
+
+### 2 · Everything else, on Databricks
+
+One Databricks Asset Bundle, three targets, **no catalog name hardcoded
+anywhere** — `env` and `catalog_prefix` are passed down and everything derives
+from them.
+
+| # | Layer | Object | What it does |
+|---|---|---|---|
+| **0** | **Landing** | UC volume + `source_manifest` | Immutable raw bytes, plus an append-only audit row per fetch attempt |
+| **1** | **Bronze** | 11 streaming tables | Auto Loader, raw exactly as landed, everything `STRING`, provenance columns only |
+| **2** | **Silver** | 10 tables | Typed, trimmed, deduplicated with SCD Type 1 change flows |
+| **3** | **Gold** | 3 materialized views | The three analytical answers, PySpark primary with a Spark SQL alternative beside it |
+| **4** | **Dashboard** | AI/BI (Lakeview) | The answers, readable without workspace access |
+
+Bronze and silver/gold are **separate pipelines**, so either can be redeployed,
+re-run or rescheduled without the other.
+
+---
+
+### On a paid workspace
+
+The network constraint would not exist: serverless has full outbound access
+unless a restricted network policy is applied, and the fetcher would run as a
+notebook task **with no other change**. The medallion split and the decoupled
+scheduling stay exactly as they are.
 
 ## What is in here
 
@@ -512,70 +648,6 @@ on Databricks compute, and nothing it imports is available there.
 | Silver dedups with Auto CDC, not a window function | `dp.create_auto_cdc_flow`, SCD Type 1, sequenced by `_ingested_at` is what actually collapses bronze's stacked snapshots after a restatement |
 | Gold implements every analysis twice | PySpark is the primary that feeds the table; the Spark SQL version sits beside it as real runnable code, per the quest's ask |
 | `value_per_quarter` stays separate from `agg_value_per_year` | Different grains. Merging them risks double-counting in an accidental `SUM`, or forces a discriminator column every downstream query must filter on |
-
-### Failure ordering
-
-Per item, always download, then upload, then write the manifest row. Never the
-reverse.
-
-```mermaid
-flowchart TD
-  MANR[("`**source_manifest**
-  latest FETCHED row per dataset`")]:::store
-  LIST["`**GET** the BLS directory listing`"]:::net
-  Q{"`Fetched this
-  file before?`"}:::decide
-  COND["`**GET** + If-Modified-Since`"]:::net
-  PLAIN["`**GET**`"]:::net
-  UP["`Upload to the **landing volume**`"]:::step
-  FET["`**FETCHED**
-  bytes landed`"]:::ok
-  UNCH["`**UNCHANGED**
-  nothing transferred`"]:::skip
-  ERR["`**ERROR**
-  nothing landed`"]:::bad
-  MANW[("`**source_manifest**
-  one row per item, per run`")]:::store
-
-  MANR ==>|"read"| LIST
-  LIST ==> Q
-  Q ==>|"yes"| COND
-  Q ==>|"no, first sighting"| PLAIN
-  COND ==>|"200 OK"| PLAIN
-  COND -.->|"304 Not Modified"| UNCH
-  PLAIN ==> UP
-  PLAIN -.->|"timeout · 4xx · 5xx"| ERR
-  UP ==> FET
-  FET ==>|"append"| MANW
-  UNCH ==>|"append"| MANW
-  ERR ==>|"append"| MANW
-
-  classDef store  fill:#38bdf8,stroke:#0284c7,stroke-width:2px,color:#ffffff
-  classDef net    fill:#6b7280,stroke:#374151,stroke-width:2px,color:#ffffff
-  classDef step   fill:#ffffff,stroke:#4b5563,stroke-width:2px,color:#1f2328
-  classDef decide fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
-  classDef ok     fill:#3dba6f,stroke:#217a44,stroke-width:2px,color:#ffffff
-  classDef skip   fill:#e5e7eb,stroke:#6b7280,stroke-width:2px,color:#1f2328
-  classDef bad    fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#ffffff
-
-  linkStyle default stroke:#4b5563,stroke-width:2px
-```
-
-The manifest is both ends of the loop: the run opens by reading the last
-successful fetch per dataset to build its conditional headers, and closes by
-appending one row per item — landed, unchanged, or failed alike.
-
-In that order every failure degrades to the same bytes landing twice under two
-timestamps, which a downstream upsert collapses harmlessly. Reversed, one failed
-upload means that file is never ingested again and nothing reports it.
-
-Rows are written per item rather than batched, so a crash mid-run leaves
-resumable state, and one item's failure never aborts the run: the rest still
-land and the process exits non-zero at the end. A failed item retries next run
-on its own, because its stored `last_modified` was never advanced. There is no
-rollback and no compensation logic, because landing is immutable: recovery is a
-re-run, and an immediate re-run is a no-op that lands nothing and writes 13
-`UNCHANGED` rows.
 
 ### What the data does that you would not expect
 
