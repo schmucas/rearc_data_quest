@@ -523,20 +523,13 @@ access. All of it below, end to end.
 <img src="https://img.shields.io/badge/On%20GitHub-1f2328?style=for-the-badge&logo=github&logoColor=white" alt="On GitHub" height="34">
 </div>
 
-#### Source fetch — dispatch with an environment selector
+#### Every pull request is gated
 
-The same workflow lands into `dev`, `stage` or `prod`.
+`ruff`, `bundle validate` against the dev target, and the full unit-test suite,
+finishing in **19 seconds**. The last step renders a summary table onto the
+run's Summary tab, so a reviewer sees the result without opening logs.
 
-![Source fetch workflow runs and the environment selector](docs/images/source-fetch-git-action.png)
-
-#### A single run
-
-Checkout, uv, dependencies, then the fetcher itself. **The whole
-thing finishes in under a minute** — 40 seconds of that is the fetch step
-landing all 12 BLS files plus the population document into the volume, and it is
-the only part that touches the public internet.
-
-![A source fetch run landing into prod](docs/images/source-fetch-landing.png)
+![PR checks: lint, bundle validate, tests and a published job summary](docs/images/github-pr-checks.png)
 
 #### Prod deploys wait for approval
 
@@ -546,6 +539,21 @@ unattended — and because the gate is a GitHub Environment, the approval and it
 comment are recorded on the run itself.
 
 ![The production environment approval gate holding a tagged deploy](docs/images/github-prod-approval-gate.png)
+
+#### Source fetch — dispatch with an environment selector
+
+The same workflow lands into `dev`, `stage` or `prod`.
+
+![Source fetch workflow runs and the environment selector](docs/images/source-fetch-git-action.png)
+
+#### A single run
+
+Checkout, uv, dependencies, then the fetcher itself. **The whole thing finishes
+in under a minute** — 40 seconds of that is the fetch step landing all 12 BLS
+files plus the population document into the volume, and it is the only part
+that touches the public internet.
+
+![A source fetch run landing into prod](docs/images/source-fetch-landing.png)
 
 ---
 
