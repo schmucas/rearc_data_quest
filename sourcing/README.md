@@ -200,7 +200,27 @@ dataset's directory doesn't exist on its first run.
 
 One row per `(source, dataset, ingest_ts)`, per item, per run, including
 unchanged ones, since "checked, nothing had changed" is an audit statement
-worth being able to make.
+worth being able to make. A steady-state run appends 13 rows.
+
+| Column | Type | |
+|---|---|---|
+| `source` | STRING | `bls_pr` / `datausa_population` |
+| `dataset` | STRING | original filename, or `population` |
+| `ingest_ts` | STRING | run stamp, matches the landed filename suffix |
+| `status` | STRING | `FETCHED` / `UNCHANGED` / `ERROR` |
+| `http_status` | INT | response code, null on a request-level failure |
+| `content_sha256` | STRING | hash of the body |
+| `last_modified` | STRING | raw header, replayed verbatim as `If-Modified-Since` |
+| `bytes` | BIGINT | size landed |
+| `source_url` | STRING | exact URL fetched |
+| `landing_path` | STRING | where it went, null unless `FETCHED` |
+| `run_id` | STRING | GitHub Actions run id, or `local` |
+| `fetched_at` | TIMESTAMP | |
+| `error_message` | STRING | populated only on `ERROR` |
+
+A failed directory listing is recorded under the sentinel dataset
+`_directory_listing`, so a run that fetched nothing is distinguishable from a
+run that was never attempted.
 
 Reading back the last known state filters to successful fetches only:
 

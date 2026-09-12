@@ -38,8 +38,10 @@ was not good enough and the work was taken over by hand, how databricks DABs hel
 ## Contents
 
 - [The architecture](#the-architecture)
-- [What is in here](#what-is-in-here)
-- [How it looks](#how-it-looks)
+- [The data](#the-data)
+- [The medallion layers](#the-medallion-layers)
+- [CI/CD and environments](#cicd-and-environments)
+- [How it looks on Databricks](#how-it-looks-on-databricks)
 - [Repo map](#repo-map)
 - [Design decisions and gotchas](#design-decisions-and-gotchas)
 - [Trade-offs](#trade-offs)
@@ -168,6 +170,22 @@ and backfills cheap.
 
 ---
 
+### Environment Separation - dev, stage, prod
+
+Everything is **replicated across `dev`, `stage` and `prod`** — separate sourcing,
+catalogs, separate landing volume and manifest, separate pipelines, jobs and
+dashboard. It is **one Databricks Asset Bundle with three targets**: the same
+commit deploys to any of them, and only `env` and `catalog_prefix` change.
+
+Deployment is **GitHub Actions driving DABs** — PR checks, merge to `main`
+deploys `dev`, a release-candidate tag deploys `stage`, a release tag deploys
+`prod` behind an approval gate.
+
+> Detail: **[CI/CD and environments](#cicd-and-environments)** ·
+> **[what it looks like deployed](#three-environments-one-workspace)**
+
+---
+
 ### 1 · The fetcher, outside Databricks
 
 [`sourcing/`](sourcing/README.md) is a small Python package that runs on a
@@ -280,14 +298,7 @@ re-run or rescheduled without the other.
 
 ---
 
-### On a paid workspace
-
-The network constraint would not exist: serverless has full outbound access
-unless a restricted network policy is applied, and the fetcher would run as a
-notebook task **with no other change**. The medallion split and the decoupled
-scheduling stay exactly as they are.
-
-## What is in here
+## The data
 
 **Sources.**
 
@@ -323,30 +334,66 @@ and what happens when a source file is added, changed, or removed.
         └── population.json__20260909T163000Z
 ```
 
-**The manifest**, `rearc_ingest.<env>.source_manifest`: append-only Delta, one
-row per `(source, dataset, ingest_ts)`, written per item on every run,
-including unchanged ones.
+**The manifest**, `rearc_ingest.<env>.source_manifest`: an append-only Delta
+table recording what the fetcher did. One row for every file it looked at, every
+time it ran — downloaded, skipped because nothing had changed, or failed, with
+the size, the hash and where it landed. Nothing is overwritten, so it is both
+the fetcher's memory of what it saw last time and a fully queryable audit trail.
 
-| Column | Type | |
-|---|---|---|
-| `source` | STRING | `bls_pr` / `datausa_population` |
-| `dataset` | STRING | original filename, or `population` |
-| `ingest_ts` | STRING | run stamp, matches the landed filename suffix |
-| `status` | STRING | `FETCHED` / `UNCHANGED` / `ERROR` |
-| `http_status` | INT | response code, null on a request-level failure |
-| `content_sha256` | STRING | hash of the body |
-| `last_modified` | STRING | raw header, replayed verbatim as `If-Modified-Since` |
-| `bytes` | BIGINT | size landed |
-| `source_url` | STRING | exact URL fetched |
-| `landing_path` | STRING | where it went, null unless `FETCHED` |
-| `run_id` | STRING | GitHub Actions run id, or `local` |
-| `fetched_at` | TIMESTAMP | |
-| `error_message` | STRING | populated only on `ERROR` |
+> Column-by-column schema and how it is read back:
+> **[`sourcing/README.md`](sourcing/README.md#the-manifest)**
 
-Each run reads the most recent `FETCHED` row per dataset to build its
-conditional headers and hash comparisons. A failed directory listing is
-recorded under the sentinel dataset `_directory_listing` rather than failing
-silently.
+
+## The medallion layers
+
+**Bronze** (`resources/dp_bronze_ingestion.yml` + `src/bronze/`):
+- One raw Delta table per BLS file, plus one for DataUSA population.
+- No filtering/casting/validation: every column lands as `STRING`, with
+  `_ingested_at` / `_source_file` for provenance. Typing is silver's job.
+- Own pipeline and job (`declarative_bronze_ingestion_job`), decoupled from
+  silver/gold and from sourcing.
+
+**Silver** (`resources/dp_silver_gold.yml` + `src/silver/`):
+- One typed, deduplicated table per bronze source.
+- Numeric columns (`year`, `value`, `begin_year`, `end_year`, `base_year`,
+  `display_level`, `sort_sequence`) cast to numeric; `selectable` to `BOOLEAN`.
+- Identifier codes (`series_id`, `measure_code`, `sector_code`, etc.) stay
+  `STRING`, since casting would drop leading zeros (e.g. `measure_code = "01"`).
+- Dedup via SCD Type 1 CDC (`dp.create_auto_cdc_flow`, sequenced by
+  `_ingested_at`), since both sources restate full history on every load.
+- `pr_data_0_current` is left unmodelled: it's a strict subset of
+  `pr_data_1_alldata`.
+
+**Gold** (same pipeline + `src/gold/`), three fully qualified materialized views:
+- `population_stats`: population mean/stddev, 2013-2018, using the population
+  (not sample) formula, since the question asks about that exact window.
+- `agg_value_per_year`: summed Q01-Q04 value per series/year, `is_best_year`
+  flag, human-readable label built from `pr_series` dimension codes.
+- `value_per_quarter`: same computation at quarter grain, with
+  `best_year_per_quarter` flagged independently per series-and-quarter slot.
+- Both per-series views join population by year generically rather than a
+  series-specific view, since population applies the same way to any series.
+- Each analysis is implemented in PySpark (primary, feeds the table) and
+  Spark SQL (documented alternative).
+- Own pipeline and job (`declarative_silver_gold_job`), decoupled from bronze.
+
+**Dashboard** (`resources/dashboard.yml` + `dashboards/rearc_gold.lvdash.json`):
+- One AI/BI (Lakeview) dashboard over gold, deployed as a bundle resource.
+- Answers the quest's three questions: population mean/stddev, best year/quarter
+  per series (human-readable label), and a chosen series's history vs. population.
+- `dataset_catalog` / `dataset_schema` on the resource, not a literal catalog
+  name in the JSON, keep it portable across dev/stage/prod.
+
+**Maintenance** (`resources/maintenance.yml` + `src/maintenance/`):
+- Runs `OPTIMIZE` across bronze/silver/gold, with `VACUUM` optional behind
+  `run_vacuum` (default off).
+- Not strictly required, predictive optimization already covers this on
+  managed UC tables. Kept because bronze uses `cluster_by_auto=True`, giving a
+  one-command way to see what a clustering change does to file layout.
+- Not scheduled on any target.
+
+
+## CI/CD and environments
 
 **Environments.** Three environments on one workspace, separated at the catalog
 level in Unity Catalog. They are bundle targets, not git branches: the same
@@ -461,53 +508,8 @@ Two Free Edition realities:
   resource file: `dev` stays manual, `stage`/`prod` deploy with
   `pause_status: PAUSED`. Unpausing is a deliberate, per-environment step.
 
-**Bronze** (`resources/dp_bronze_ingestion.yml` + `src/bronze/`):
-- One raw Delta table per BLS file, plus one for DataUSA population.
-- No filtering/casting/validation: every column lands as `STRING`, with
-  `_ingested_at` / `_source_file` for provenance. Typing is silver's job.
-- Own pipeline and job (`declarative_bronze_ingestion_job`), decoupled from
-  silver/gold and from sourcing.
 
-**Silver** (`resources/dp_silver_gold.yml` + `src/silver/`):
-- One typed, deduplicated table per bronze source.
-- Numeric columns (`year`, `value`, `begin_year`, `end_year`, `base_year`,
-  `display_level`, `sort_sequence`) cast to numeric; `selectable` to `BOOLEAN`.
-- Identifier codes (`series_id`, `measure_code`, `sector_code`, etc.) stay
-  `STRING`, since casting would drop leading zeros (e.g. `measure_code = "01"`).
-- Dedup via SCD Type 1 CDC (`dp.create_auto_cdc_flow`, sequenced by
-  `_ingested_at`), since both sources restate full history on every load.
-- `pr_data_0_current` is left unmodelled: it's a strict subset of
-  `pr_data_1_alldata`.
-
-**Gold** (same pipeline + `src/gold/`), three fully qualified materialized views:
-- `population_stats`: population mean/stddev, 2013-2018, using the population
-  (not sample) formula, since the question asks about that exact window.
-- `agg_value_per_year`: summed Q01-Q04 value per series/year, `is_best_year`
-  flag, human-readable label built from `pr_series` dimension codes.
-- `value_per_quarter`: same computation at quarter grain, with
-  `best_year_per_quarter` flagged independently per series-and-quarter slot.
-- Both per-series views join population by year generically rather than a
-  series-specific view, since population applies the same way to any series.
-- Each analysis is implemented in PySpark (primary, feeds the table) and
-  Spark SQL (documented alternative).
-- Own pipeline and job (`declarative_silver_gold_job`), decoupled from bronze.
-
-**Dashboard** (`resources/dashboard.yml` + `dashboards/rearc_gold.lvdash.json`):
-- One AI/BI (Lakeview) dashboard over gold, deployed as a bundle resource.
-- Answers the quest's three questions: population mean/stddev, best year/quarter
-  per series (human-readable label), and a chosen series's history vs. population.
-- `dataset_catalog` / `dataset_schema` on the resource, not a literal catalog
-  name in the JSON, keep it portable across dev/stage/prod.
-
-**Maintenance** (`resources/maintenance.yml` + `src/maintenance/`):
-- Runs `OPTIMIZE` across bronze/silver/gold, with `VACUUM` optional behind
-  `run_vacuum` (default off).
-- Not strictly required, predictive optimization already covers this on
-  managed UC tables. Kept because bronze uses `cluster_by_auto=True`, giving a
-  one-command way to see what a clustering change does to file layout.
-- Not scheduled on any target.
-
-## How it looks
+## How it looks on Databricks
 
 The quest asks for screenshots of the pipeline, the tables, and the output for
 each of the three analytical questions, since reviewers may not have workspace
