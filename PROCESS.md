@@ -129,6 +129,18 @@ comfortably so: per
 [`pr.txt`](https://download.bls.gov/pub/time.series/pr/pr.txt), BLS publishes
 this data quarterly — four times a year.
 
+The sharpest edge of that choice is **observability**. The fetcher emits no logs
+at all — no prints, no structured logging, and no job summary step — so the
+Actions run shows step names and an exit code and nothing about what actually
+happened to each of the thirteen items. All of that detail lives in the manifest
+table, which means **debugging a failed fetch means leaving GitHub and querying
+Databricks**, and a failure early enough to happen *before* the manifest is
+reachable (an unset contact address, a bad token, an unresolvable warehouse)
+leaves only a raw traceback. On a platform-native ingestion this would come free
+from the job's own run history and event log; here it had to be given up, and
+the cheap fix — a `GITHUB_STEP_SUMMARY` table of per-item outcomes, which the PR
+workflow already does for its checks — is the first thing I would add.
+
 **Bronze keeps the data exactly as it arrives**, which was a deliberate
 principle rather than a shortcut: no trimming, no casting, no renaming. That
 principle is what forced a specific fix. BLS pads fields to fixed width *inside*

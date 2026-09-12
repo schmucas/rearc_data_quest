@@ -82,8 +82,11 @@ Entry point: `uv run python -m sourcing --env dev`.
 BLS is a public government server being asked for a favour. Four things keep
 the load negligible:
 
-- **Conditional requests.** A no-op run transfers response headers and no
-  bodies. The full payload is ~4.9 MB, moved only when BLS republishes.
+- **Conditional requests.** On a no-op run none of the twelve BLS bodies
+  transfer: the server answers `304` and the ~4.9 MB payload moves only when BLS
+  republishes. The DataUSA document is the exception — with no validators it has
+  to be downloaded before it can be hashed — but it is a couple of KB, so that
+  read is not worth optimising away. Either way, nothing new is *landed*.
 - **Serial, never parallel.** The twelve files fetch one after another, no
   concurrency to tune, no burst of simultaneous connections.
 - **Explicit timeouts.** Every request uses a 60-second timeout, so a hanging
@@ -279,3 +282,8 @@ path construction, manifest row shaping, and orchestration control flow.
 
 - No retry, backoff, or `Retry-After` handling on transient failures.
 - No post-upload size verification against `content_length`.
+- **No logging and no job summary.** The Actions run shows step names and an exit
+  code; per-item outcomes are only in the manifest, so debugging means querying
+  Databricks rather than reading the run. A `GITHUB_STEP_SUMMARY` table of what
+  each item did, as `pr.yml` already renders for its checks, would close most of
+  this.
