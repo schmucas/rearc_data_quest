@@ -1,0 +1,153 @@
+# PROCESS
+
+How this was built, and where AI fit.
+
+Architecture, trade-offs and data caveats live in
+[README.md](README.md) alongside the diagrams, rather than being restated here.
+
+## Contents
+
+- [AI usage](#ai-usage)
+- [Retrospective](#retrospective)
+
+---
+
+## AI usage
+
+AI was used throughout, in two distinct roles: **Claude Cowork for thinking**
+(research, architecture, drafting prompts) and **Claude Code for building**
+(implementation, testing, deployment). Keeping those separate is the core of the
+workflow below.
+
+### Setup
+
+Started a Claude Cowork project, and created the repo from my own
+[Databricks project template](https://github.com/schmucas/databricks_project_template).
+The template supplies the DAB definition with three targets driven by `env` and
+`catalog_prefix` (so no catalog name is ever hardcoded), four GitHub Actions
+workflows covering PR checks and deployment to each environment, a
+bronze/silver/gold source layout with unit-tested utilities, an init script, and
+the Claude plugin/MCP wiring that pulls in my skills from
+[dotclaude](https://github.com/schmucas/dotclaude).
+
+Enabled the Databricks SQL MCP server by adding a `.envrc`, running
+`direnv allow`, and launching VS Code with `code .` from the terminal so the MCP
+server is invoked at project level with the environment already loaded.
+
+### Understanding the data first
+
+Read the BLS layout documentation at
+[`pr.txt`](https://download.bls.gov/pub/time.series/pr/pr.txt) directly, then had
+Claude research the rest — the access policy behind the 403, the DataUSA
+endpoint's shape. Reading the provider's own docs first is what surfaced 
+the `Q05` and unit-heterogeneity issues; neither is visible from the data alone.
+
+### Architecture before implementation
+
+Drafted the whole architecture in Claude Cowork before any code existed —
+sourcing strategy, landing layout, manifest design, failure ordering. That
+conversation is where the Free Edition egress wall was found and tested out and the design
+moved off-platform, which would have been frustating to discover mid-build.
+
+### Staged delivery
+
+Split the work into five stages: sourcing, bronze, silver + gold, dashboard,
+documentation.
+
+### The loop, repeated per stage
+
+1. Draft the Claude Code prompt in Claude Cowork as a markdown file, and
+   iterate on it there until it is precise.
+2. Hand it to Claude Code in **plan mode on Sonnet at extra-high effort** —
+   keeping token usage and context window under
+   control before any code is written.
+3. Once the plan is agreed: implement, test locally, deploy to `dev`.
+4. Validate `dev` twice, independently:
+   - **By hand** — the UI for catalog, volumes, tables and pipelines; the SQL
+     editor and notebooks for results, with Genie used to draft validation
+     queries quickly.
+   - **By Claude Code** — via the Databricks CLI, the SQL MCP server, and the
+     Databricks AI dev kit.
+5. Iterate with Claude Code on gaps until satisfied.
+6. Small, self-contained fixes go to a **separate session** rather than the main
+   one, to conserve context window and token usage.
+7. Fold recurring instructions and design preferences back into my
+   [dotclaude](https://github.com/schmucas/dotclaude) skills, and update the
+   plugin so the next stage starts with the improved versions.
+8. Validate again.
+9. Push, deploy all three environments, move to the next stage.
+
+### Where the loop broke down: the dashboard
+
+The stage-by-stage loop above held for everything except the dashboard.
+
+Claude Code built a first version from the prompt, and it was not good enough —
+it looked like a dashboard but did not actually answer the quest's three
+questions in a way a reviewer could read off it. Several rounds of iteration did
+not close the gap.
+
+So I changed approach and built it myself, to my own standards. I authored the
+dashboard directly in the workspace UI, reshaping the underlying datasets as I
+went, and had Claude Code rework the gold materialized views underneath to match
+what the presentation actually needed. Then I pulled the workspace version back
+over the local file with a forced `databricks bundle generate dashboard`, pushed
+it, adjusted again in the UI, regenerated again, and repeated until it was
+finished — then committed the result.
+
+Two things worth taking from that. **The UI is the authoring surface for a
+visual artifact and the bundle is the version-control surface**; round-tripping
+through `bundle generate` is the honest loop, not hand-authoring Lakeview JSON.
+And the split of competence was clear — AI was genuinely useful for the data
+work beneath the dashboard, and not a substitute for my own judgement about what
+a reader needs to see.
+
+### What AI got wrong, and how it was caught
+
+The pattern that mattered: AI proposed, I verified against primary sources.
+Several early design proposals were over-engineered and were cut back
+deliberately — a carry-forward scheme in the manifest, an `etag` column and a
+`changed` flag all disappeared once filtering to the last successful fetch
+proved simpler and more honest. An initial suggestion to couple the fetcher to a
+downstream trigger was dropped after the justification for it turned out not to
+hold. And a proposal to skip the dual SQL/PySpark implementation was reversed
+after re-reading the assignment, which asks for it explicitly.
+
+Every load-bearing claim was checked against the source rather than accepted:
+`Q05`'s meaning was confirmed arithmetically from actual rows, the unit ambiguity
+behind `value` came from `pr.duration`, and the egress limitation was confirmed
+by running the failing call in the workspace rather than trusting a summary.
+
+---
+
+## Retrospective
+
+**The sourcing solution is a workaround, not a pattern I would ship.** Running
+the fetcher from a GitHub Actions runner gets around the Free Edition egress
+restriction, but I would not put a CI runner on the critical path of a
+production ingestion. It is sufficient here, and the source cadence makes it
+comfortably so: per
+[`pr.txt`](https://download.bls.gov/pub/time.series/pr/pr.txt), BLS publishes
+this data quarterly — four times a year.
+
+**Bronze keeps the data exactly as it arrives**, which was a deliberate
+principle rather than a shortcut: no trimming, no casting, no renaming. That
+principle is what forced a specific fix. BLS pads fields to fixed width *inside*
+a tab-delimited file, so header names arrive with trailing spaces and Delta
+rejects them outright. Rather than rename the columns, the bronze tables enable
+Delta column mapping so the raw header lands untouched, and trimming becomes
+silver's job.
+
+**I should have read more documentation and trusted Claude less.** The two
+issues that would have quietly produced plausible wrong answers — `Q05` being an
+annual average, and `value` meaning three different units depending on
+`duration_code` — are both plainly documented in the BLS files and invisible in
+the data itself. Both were eventually caught, but by verification rather than by
+having read carefully in the first place.
+
+**I should have spent longer on the architecture document up front.** A few
+nuances got changed well into the build that would have been much cheaper to
+settle before any code existed.
+
+**What worked best was iterating on the plan rather than the code.** Time spent
+refining what Claude Code produced in plan mode paid back heavily: bugs were
+rare, and almost every deploy worked the first time it was pushed.
