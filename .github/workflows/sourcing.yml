@@ -1,7 +1,15 @@
 name: Source Fetch → Landing
 
-# Manual dispatch only for now. Scheduling (cron) is deferred until stage/prod
-# have their own ingest schemas set up -- see the sourcing fetcher plan.
+# Manual dispatch, plus a scheduled trigger mirroring the downstream
+# Databricks job schedules (databricks.yml's stage/prod targets), each timed
+# an hour ahead of that env's bronze pipeline so landing data exists before
+# bronze reads it. See databricks.yml for the bronze/silver_gold quartz crons
+# this is offset from.
+#
+# PAUSED: the fetch job below is gated off (`if: github.event_name !=
+# 'schedule'`) so the schedule exists but doesn't actually run yet, mirroring
+# how those Databricks jobs ship with pause_status: PAUSED. Remove that
+# condition to switch it on.
 #
 # One workspace, one DATABRICKS_HOST/TOKEN pair regardless of the env picked
 # below -- same convention as deploy-stage.yml/deploy-prod.yml. Only `dev` has
@@ -19,12 +27,20 @@ on:
           - stage
           - prod
         default: dev
+  schedule:
+    # An hour ahead of stage's bronze job (databricks.yml: hour 1 UTC).
+    - cron: "0 0 7 2,3,5,6,8,9,11,12 *"
+    # An hour ahead of prod's bronze job (databricks.yml: hour 3 UTC).
+    - cron: "0 2 7 2,3,5,6,8,9,11,12 *"
 
 jobs:
   fetch:
-    name: Fetch BLS + DataUSA into landing (${{ inputs.env }})
+    name: Fetch BLS + DataUSA into landing (${{ inputs.env || github.event.schedule }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    # PAUSED -- see the schedule comment above.
+    if: github.event_name != 'schedule'
 
     env:
       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
@@ -44,5 +60,27 @@ jobs:
       - name: Install dependencies
         run: uv sync --group sourcing
 
+      # A `schedule` event carries no `inputs`, so the env has to be derived
+      # from which cron fired instead. Context values are passed through env
+      # vars rather than interpolated into the script body.
+      - name: Resolve target environment
+        id: resolve_env
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          DISPATCH_ENV: ${{ inputs.env }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            case "$EVENT_SCHEDULE" in
+              "0 0 7 2,3,5,6,8,9,11,12 *") echo "env=stage" >> "$GITHUB_OUTPUT" ;;
+              "0 2 7 2,3,5,6,8,9,11,12 *") echo "env=prod" >> "$GITHUB_OUTPUT" ;;
+              *) echo "Unrecognized schedule: $EVENT_SCHEDULE" >&2; exit 1 ;;
+            esac
+          else
+            echo "env=$DISPATCH_ENV" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Fetch sources into landing
-        run: uv run python -m sourcing --env ${{ inputs.env }}
+        env:
+          TARGET_ENV: ${{ steps.resolve_env.outputs.env }}
+        run: uv run python -m sourcing --env "$TARGET_ENV"

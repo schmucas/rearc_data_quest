@@ -143,7 +143,7 @@ flowchart LR
 
 | # | Stage | Runs on | Triggered by |
 |---|---|---|---|
-| **1** | Source and land | GitHub Actions runner | manual dispatch |
+| **1** | Source and land | GitHub Actions runner | own cron, 8x a year *(paused)* |
 | **2** | Bronze | Lakeflow Declarative Pipeline | own cron, 8x a year *(paused)* |
 | **3** | Silver and gold | Lakeflow Declarative Pipeline | own cron, 8x a year *(paused)* |
 
@@ -152,6 +152,13 @@ BLS's publication rhythm — Productivity and Costs is released preliminary and
 then revised for each quarter. They ship **paused**, so unpausing is a
 deliberate per-environment act rather than something a deploy does for you.
 Every stage can also be run by hand at any time.
+
+Sourcing's cron mirrors this from the GitHub Actions side: one trigger an hour
+ahead of stage's bronze run, one an hour ahead of prod's, so landing data
+exists before bronze reads it. GitHub Actions has no per-schedule pause flag
+like `pause_status`. Instead the fetch job carries a condition that no-ops on
+a scheduled run, so the trigger sits in the workflow file doing nothing until
+that condition is removed.
 
 **Nothing triggers anything else.**
 
