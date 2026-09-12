@@ -31,6 +31,10 @@ query the workspace directly, configured via a project-level `.mcp.json`
 rather than Claude's own UI, since the workspace connection is tied to this
 project.
 
+[PROCESS.md](PROCESS.md) covers how that worked in practice: the stage-by-stage
+workflow, how AI output was validated and where it had to be corrected, where it
+was not good enough and the work was taken over by hand, how databricks DABs helped speed up the manual edits on the UI by updating the code with the latest hand edited UI version, and what worked well and what I would do differently next time.
+
 ## Contents
 
 - [The idea](#the-idea)
