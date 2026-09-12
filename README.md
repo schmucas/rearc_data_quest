@@ -39,6 +39,7 @@ was not good enough and the work was taken over by hand, how databricks DABs hel
 
 - [The idea](#the-idea)
 - [What is in here](#what-is-in-here)
+- [How it looks](#how-it-looks)
 - [Repo map](#repo-map)
 - [Design decisions and gotchas](#design-decisions-and-gotchas)
 - [Trade-offs](#trade-offs)
@@ -54,8 +55,8 @@ can reach the network, and everything from there in has to run on Databricks,
 deployed as code.
 
 The answer: a fetcher that lives outside Databricks entirely (a GitHub Actions
-runner, `sourcing/`), pushing raw bytes and a record of what it did into Unity
-Catalog. Two Lakeflow Declarative Pipelines, each deployed via the same
+runner, [`sourcing/`](sourcing/README.md)), pushing raw bytes and a record of
+what it did into Unity Catalog. Two Lakeflow Declarative Pipelines, each deployed via the same
 Databricks Asset Bundle, turn those landed files into a bronze, silver, and
 gold medallion. The three stages, source and land, bronze, and silver and
 gold, run as three separately triggered units: a GitHub Actions workflow, and
@@ -164,6 +165,10 @@ split and the decoupled scheduling would stay exactly the same.
 
 Filenames are never hardcoded. Every run re-parses the directory listing, so a
 file BLS adds or removes is handled without a code change.
+[`sourcing/README.md`](sourcing/README.md) covers the fetcher in detail: how it
+satisfies BLS's contact-header policy, how it keeps load off a public government
+server, how change detection differs between a file folder and a query endpoint,
+and what happens when a source file is added, changed, or removed.
 
 **The landing volume**, one independent copy per environment:
 `/Volumes/rearc_ingest/<env>/landing/<source>/<dataset>/<filename>__<ingest_ts>`.
@@ -241,23 +246,25 @@ flowchart LR
         direction TB
         DDEV(["🚀 Deploy dev"])
         DSTG(["🚀 Deploy stage"])
-        ITEST{{"🧪 Integration tests<br/>(planned)"}}
         GATE{"🔒 Approval<br/>gate"}
         DPRD(["🚀 Deploy prod"])
     end
 
     subgraph dbx["☁️ Databricks · Unity Catalog"]
         direction TB
-        DEV[("dev<br/>mode: development<br/>sl_dev")]
-        STG[("stage<br/>production · shared<br/>sl_stage")]
-        PRD[("prod<br/>production · shared<br/>sl_prod")]
+        DEV[("dev<br/>mode: development<br/>rearc_dev")]
+        STG[("stage<br/>production · shared<br/>rearc_stage")]
+        PRD[("prod<br/>production · shared<br/>rearc_prod")]
+        EXPECT{{"🧪 Pipeline expectations<br/>enforced on every run"}}
     end
 
     BUNDLE ==>|"push"| PR
     MAIN ==>|"merge (auto)"| DDEV ==> DEV
     RC ==>|"tag"| DSTG ==> STG
-    DSTG -.->|"against staging"| ITEST
     REL ==>|"tag"| GATE ==> DPRD ==> PRD
+    DEV -.-> EXPECT
+    STG -.-> EXPECT
+    PRD -.-> EXPECT
 
     classDef loc fill:#ede7f9,stroke:#7b5ea7,color:#2e2153,stroke-width:1.5px
     classDef vcs   fill:#dde3ea,stroke:#4b5b6b,color:#1f2a36,stroke-width:1.5px
@@ -266,7 +273,6 @@ flowchart LR
     classDef dev   fill:#4a90d9,stroke:#2c5f8a,color:#fff,stroke-width:2px
     classDef stage fill:#e8a838,stroke:#a06b10,color:#fff,stroke-width:2px
     classDef prod  fill:#3dba6f,stroke:#217a44,color:#fff,stroke-width:2px
-    classDef plan  fill:#eef2f6,stroke:#9aa3ad,color:#5b6b7b,stroke-dasharray:5 4
 
     class IDE,BUNDLE loc
     class PR,MAIN,RC,REL vcs
@@ -275,7 +281,7 @@ flowchart LR
     class DDEV,DEV dev
     class DSTG,STG stage
     class DPRD,PRD prod
-    class ITEST plan
+    class EXPECT check
 
     style local fill:#f6f2fc,stroke:#7b5ea7,stroke-width:2px
     style gh    fill:#eef1f5,stroke:#4b5b6b,stroke-width:2px
@@ -307,86 +313,160 @@ and `prod` run `mode: production` with `stage_` / `prod_` name prefixes and
 fixed shared root paths under `/Workspace/Shared/<target>/`, and are only ever
 deployed by CI, on a tag.
 
-Two Free Edition realities shape the mechanics:
+Two Free Edition realities:
 
-- **PAT, not a service principal.** Free Edition has no account console, so
-  OAuth M2M is unavailable and deploys authenticate with a personal access token
-  held as a repository secret. On a paid workspace this would be a service
-  principal, and nothing else about the pipeline would change.
-- **The approval gate needs a public repo.** GitHub Free enforces required
-  reviewers on Environments only in public repositories, so the `production`
-  gate here is real. In a private repo the environment still exists and the
-  deploy proceeds unattended, which is worth knowing before relying on it.
+- **PAT, not a service principal.** No account console means no OAuth M2M;
+  deploys authenticate with a PAT held as a repo secret. Same role a service
+  principal would play on a paid workspace.
+- **Approval gate needs a public repo.** GitHub Free enforces required
+  reviewers on Environments only in public repos. In a private repo the
+  `production` gate exists but the deploy proceeds unattended.
+- **Schedules ship paused.** Schedules are declared per target, not in the
+  resource file: `dev` stays manual, `stage`/`prod` deploy with
+  `pause_status: PAUSED`. Unpausing is a deliberate, per-environment step.
 
-**Schedules ship paused.** Job schedules are declared on the target rather than
-in the resource file, so `dev` stays manual, and every `stage` / `prod` schedule
-deploys with `pause_status: PAUSED`. Unpausing is a deliberate per-environment
-act, not something a deploy does on your behalf.
+**Bronze** (`resources/dp_bronze_ingestion.yml` + `src/bronze/`):
+- One raw Delta table per BLS file, plus one for DataUSA population.
+- No filtering/casting/validation: every column lands as `STRING`, with
+  `_ingested_at` / `_source_file` for provenance. Typing is silver's job.
+- Own pipeline and job (`declarative_bronze_ingestion_job`), decoupled from
+  silver/gold and from sourcing.
 
-**Bronze layer**, `resources/dp_bronze_ingestion.yml` + `src/bronze/`: one
-Delta table per BLS file, one for DataUSA population, all raw. No filtering,
-casting, or validation: every column lands as `STRING`, and every table
-carries `_ingested_at` and `_source_file` for provenance. Trimming and typing
-are silver's job.
+**Silver** (`resources/dp_silver_gold.yml` + `src/silver/`):
+- One typed, deduplicated table per bronze source.
+- Numeric columns (`year`, `value`, `begin_year`, `end_year`, `base_year`,
+  `display_level`, `sort_sequence`) cast to numeric; `selectable` to `BOOLEAN`.
+- Identifier codes (`series_id`, `measure_code`, `sector_code`, etc.) stay
+  `STRING`, since casting would drop leading zeros (e.g. `measure_code = "01"`).
+- Dedup via SCD Type 1 CDC (`dp.create_auto_cdc_flow`, sequenced by
+  `_ingested_at`), since both sources restate full history on every load.
+- `pr_data_0_current` is left unmodelled: it's a strict subset of
+  `pr_data_1_alldata`.
 
-It runs as its own pipeline and its own job (`declarative_bronze_ingestion_job`),
-separate from silver and gold. Nothing wires the two together: bronze checks
-the landing volume on every run and does nothing when there is nothing new,
-the same way sourcing triggers nothing downstream.
+**Gold** (same pipeline + `src/gold/`), three fully qualified materialized views:
+- `population_stats`: population mean/stddev, 2013-2018, using the population
+  (not sample) formula, since the question asks about that exact window.
+- `agg_value_per_year`: summed Q01-Q04 value per series/year, `is_best_year`
+  flag, human-readable label built from `pr_series` dimension codes.
+- `value_per_quarter`: same computation at quarter grain, with
+  `best_year_per_quarter` flagged independently per series-and-quarter slot.
+- Both per-series views join population by year generically rather than a
+  series-specific view, since population applies the same way to any series.
+- Each analysis is implemented in PySpark (primary, feeds the table) and
+  Spark SQL (documented alternative).
+- Own pipeline and job (`declarative_silver_gold_job`), decoupled from bronze.
 
-**Silver layer**, `resources/dp_silver_gold.yml` (shared with gold) +
-`src/silver/`: one table per bronze source, typed and deduplicated. Bronze
-lands everything as `STRING`, so silver casts deliberately: `year`, `value`,
-`begin_year`, `end_year`, `base_year`, `display_level`, and `sort_sequence`
-to numeric types, `selectable` to `BOOLEAN`. Identifier codes (`series_id`,
-`measure_code`, `sector_code`, and the rest) stay `STRING`: they are not
-quantities, and `measure_code` values like `"01"` would lose their leading
-zero under a numeric cast. Deduplication uses SCD Type 1 change-data-capture
-(`dp.create_auto_cdc_flow`, sequenced by `_ingested_at`), since both sources
-restate history and bronze stacks every snapshot ever landed. `pr_data_0_current`
-is left unmodelled: it is a strict subset of `pr_data_1_alldata`, so modelling
-it too would only duplicate rows.
+**Dashboard** (`resources/dashboard.yml` + `dashboards/rearc_gold.lvdash.json`):
+- One AI/BI (Lakeview) dashboard over gold, deployed as a bundle resource.
+- Answers the quest's three questions: population mean/stddev, best year/quarter
+  per series (human-readable label), and a chosen series's history vs. population.
+- `dataset_catalog` / `dataset_schema` on the resource, not a literal catalog
+  name in the JSON, keep it portable across dev/stage/prod.
 
-**Gold layer**, same pipeline + `src/gold/`: three fully qualified
-materialized views. `population_stats`: mean and standard deviation of US
-population, 2013 to 2018, using the population formula rather than the
-sample formula, since the question asks about that exact six-year window,
-not a sample drawn from a larger one. `agg_value_per_year`: summed Q01-Q04
-value per series per year, with `is_best_year` flagging the highest-summed
-year per series, and a human-readable label built from `pr_series`'s
-dimension codes. `value_per_quarter`: the same computation at quarter grain,
-unsummed, with `best_year_per_quarter` flagging the highest-value year
-separately within each series-and-quarter slot. Both per-series views
-left-join population by year rather than keeping a `PRS30006032`-specific
-view: population applies identically to any series in a given year, so
-generalizing the join retired the one narrower, single-series view. Each
-analysis is implemented twice, once in the PySpark DataFrame API and once in
-Spark SQL, with PySpark as the primary that feeds the table and SQL kept
-alongside as a documented, runnable alternative.
+**Maintenance** (`resources/maintenance.yml` + `src/maintenance/`):
+- Runs `OPTIMIZE` across bronze/silver/gold, with `VACUUM` optional behind
+  `run_vacuum` (default off).
+- Not strictly required, predictive optimization already covers this on
+  managed UC tables. Kept because bronze uses `cluster_by_auto=True`, giving a
+  one-command way to see what a clustering change does to file layout.
+- Not scheduled on any target.
 
-Silver and gold run as their own pipeline and their own job
-(`declarative_silver_gold_job`), decoupled from bronze the same way bronze is
-decoupled from sourcing.
+## How it looks
 
-**Dashboard**, `resources/dashboard.yml` + `dashboards/rearc_gold.lvdash.json`:
-one AI/BI (Lakeview) dashboard over the gold layer, deployed as a bundle
-resource rather than built by hand in the workspace. It answers the quest's
-three analytical questions directly, for a reviewer who may not have
-workspace access: population's mean and standard deviation, the best year
-(and best quarter) for every series with a human-readable label instead of a
-bare series code, and the history of a chosen series tracked against
-population. `dataset_catalog` and `dataset_schema` on the resource, not a
-literal catalog name inside the dashboard JSON, let every dataset query a
-bare table name and stay portable across dev, stage, and prod.
+The quest asks for screenshots of the pipeline, the tables, and the output for
+each of the three analytical questions, since reviewers may not have workspace
+access. All of it below, end to end.
 
-**Maintenance**, `resources/maintenance.yml` + `src/maintenance/`: a job that
-runs `OPTIMIZE` across every table in `bronze`, `silver` and `gold`, with an
-optional `VACUUM` behind a `run_vacuum` parameter that defaults to off. It comes
-from the project template and nothing here requires it: predictive optimization
-already handles this on managed Unity Catalog tables. It is kept because every
-bronze table uses `cluster_by_auto=True`, so having a one-command way to force a
-rewrite makes it easy to see what a clustering change actually does to file
-layout and query performance. Not scheduled on any target.
+### Source fetch, on a GitHub runner
+
+Manual dispatch with an environment selector, so the same workflow lands into
+`dev`, `stage` or `prod`.
+
+![Source fetch workflow runs and the environment selector](docs/images/source-fetch-git-action.png)
+
+A single run: checkout, uv, dependencies, then the fetcher itself. **The whole
+thing finishes in under a minute** — 40 seconds of that is the fetch step
+landing all 12 BLS files plus the population document into the volume, and it is
+the only part that touches the public internet.
+
+![A source fetch run landing into prod](docs/images/source-fetch-landing.png)
+
+### Bronze
+
+Eleven Auto Loader streaming tables, one per BLS file plus DataUSA population,
+each reading its own landing directory. Serverless, parameterised by `env` and
+`catalog_prefix`, no catalog name anywhere in the source.
+
+![Bronze declarative pipeline graph and run details](docs/images/bronze-dp-pipeline.png)
+
+### Silver and gold
+
+One pipeline covering both layers, resolving the dependency graph itself: each
+bronze table flows through a typed intermediate view into a deduplicated silver
+table, and the gold views fan in from there. Expectations are attached per
+dataset and visible in the run summary.
+
+![Silver and gold declarative pipeline graph and run details](docs/images/silver-gold-dp-pipeline.png)
+
+### Three environments, one workspace
+
+Every job and pipeline exists three times over: `stage_` and `prod_` deployed by
+CI, and a `[dev l_zwicky]` copy alongside them.
+
+That prefix is `mode: development` doing its job. Databricks prepends
+`[dev ${workspace.current_user.short_name}]` to every deployed resource, tags
+them `dev`, pauses all schedules and triggers, and deploys into the developer's
+own workspace home directory. So the prefix is **per user**: a second engineer
+deploying the same bundle gets `[dev their_name]` resources in their own
+directory, and the two never collide. It is Databricks' recommended shape for
+team development — everyone iterates against a private copy of the full stack,
+and `stage` and `prod` stay CI-only, under fixed shared paths, deployed on a tag
+and never from a personal account.
+
+Stage and prod schedules show as paused, exactly as they ship.
+
+![Jobs and pipelines across dev, stage and prod](docs/images/jobs-overview-all-3-environments.png)
+
+The dashboard deploys per environment the same way, as a bundle resource rather
+than a hand-built asset. That matters more than it looks: a dashboard can be
+reworked in the `dev` copy — datasets, widgets, layout — while `stage` and
+`prod` carry on serving the last released version untouched. Changes get tried
+in the workspace UI where visual work actually happens, pulled back into the
+repo, and promoted on a tag. Rapid iteration on the visual layer without a
+half-finished chart ever appearing in front of a consumer.
+
+![The dashboard deployed in dev, stage and prod](docs/images/dashboards-env-stage-prod-environments.png)
+
+### The three answers
+
+**Question 1 — mean and standard deviation of the annual US population,
+2013 to 2018.** Read straight off the counters, with the year count confirming
+the window is the full six years. Both conventions are shown: the headline uses
+the population formula, since the question asks about exactly those six years
+rather than a sample drawn from something larger, and the sample figure sits
+below it for comparison.
+
+![Population mean, standard deviation and year count](docs/images/dashboard-question1.png)
+
+**Question 2 — the best year for every series.** 237 series, each labelled in
+plain language rather than by code, with `Q05` excluded from the sum so BLS's
+annual average is not counted twice. Ties resolve to the earlier year.
+
+![Best year per series, with the aggregated quarterly chart](docs/images/dashboard-question2.png)
+
+**Question 3 — a series' quarterly values against population.** Filtered to
+`Q01`, value bars on the left axis and population on the right. Population only
+covers part of the range, which is the left join doing its job rather than a
+gap in the chart.
+
+![Quarterly values and population by year](docs/images/dashboard-question3.png)
+
+### Genie on the gold layer
+
+Gold feeds a Genie space, so a non-technical reader can ask why the chart looks
+the way it does and get an answer grounded in the data rather than guessing.
+
+![Genie explaining the missing population years](docs/images/dashboard-genie-interaction.png)
 
 ## Repo map
 
@@ -394,6 +474,7 @@ layout and query performance. Not scheduled on any target.
 databricks.yml            bundle definition: env + catalog_prefix, 3 targets
 resources/                one file per job, pipeline, or dashboard
 sourcing/                 the fetcher, runs on a GitHub runner, not on Databricks
+  README.md               how it works in detail: bot blocking, rate limits, idempotency
   bls.py                  listing parser + conditional GET
   datausa.py              query endpoint + hash comparison
   landing.py              path construction + Files API upload
@@ -439,15 +520,50 @@ reverse.
 
 ```mermaid
 flowchart TD
-  L["List BLS folder"] --> Q{"Seen this file before?"}
-  Q -- "no" --> G["GET"]
-  Q -- "yes" --> C["GET + If-Modified-Since"]
-  C -- "304" --> U["UNCHANGED row"]
-  C -- "200" --> G
-  G --> UP["Upload to landing volume"]
-  UP --> F["FETCHED row"]
-  G -. "failure" .-> E["ERROR row"]
+  MANR[("`**source_manifest**
+  latest FETCHED row per dataset`")]:::store
+  LIST["`**GET** the BLS directory listing`"]:::net
+  Q{"`Fetched this
+  file before?`"}:::decide
+  COND["`**GET** + If-Modified-Since`"]:::net
+  PLAIN["`**GET**`"]:::net
+  UP["`Upload to the **landing volume**`"]:::step
+  FET["`**FETCHED**
+  bytes landed`"]:::ok
+  UNCH["`**UNCHANGED**
+  nothing transferred`"]:::skip
+  ERR["`**ERROR**
+  nothing landed`"]:::bad
+  MANW[("`**source_manifest**
+  one row per item, per run`")]:::store
+
+  MANR ==>|"read"| LIST
+  LIST ==> Q
+  Q ==>|"yes"| COND
+  Q ==>|"no, first sighting"| PLAIN
+  COND ==>|"200 OK"| PLAIN
+  COND -.->|"304 Not Modified"| UNCH
+  PLAIN ==> UP
+  PLAIN -.->|"timeout · 4xx · 5xx"| ERR
+  UP ==> FET
+  FET ==>|"append"| MANW
+  UNCH ==>|"append"| MANW
+  ERR ==>|"append"| MANW
+
+  classDef store  fill:#38bdf8,stroke:#0284c7,stroke-width:2px,color:#ffffff
+  classDef net    fill:#6b7280,stroke:#374151,stroke-width:2px,color:#ffffff
+  classDef step   fill:#ffffff,stroke:#4b5563,stroke-width:2px,color:#1f2328
+  classDef decide fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
+  classDef ok     fill:#3dba6f,stroke:#217a44,stroke-width:2px,color:#ffffff
+  classDef skip   fill:#e5e7eb,stroke:#6b7280,stroke-width:2px,color:#1f2328
+  classDef bad    fill:#ef4444,stroke:#991b1b,stroke-width:2px,color:#ffffff
+
+  linkStyle default stroke:#4b5563,stroke-width:2px
 ```
+
+The manifest is both ends of the loop: the run opens by reading the last
+successful fetch per dataset to build its conditional headers, and closes by
+appending one row per item — landed, unchanged, or failed alike.
 
 In that order every failure degrades to the same bytes landing twice under two
 timestamps, which a downstream upsert collapses harmlessly. Reversed, one failed
@@ -505,8 +621,14 @@ on the critical path of a production ingestion. It is sufficient here, and the
 source cadence makes it comfortably so: BLS publishes this data quarterly.
 
 **Known gaps, stated rather than hidden.** The fetcher has no retry or backoff,
-so one flaky connection to BLS becomes a failed run. There is no post-upload
-size verification against `content_length`. The sourcing workflow has no cron.
+so one flaky connection to BLS becomes a failed run, and there is no post-upload
+size verification against `content_length`.
+
+**The sourcing workflow is unscheduled on purpose.** BLS publishes quarterly, so
+a nightly cron would mean roughly 360 no-op runs a year — each writing 13
+manifest rows — to catch four real changes. Leaving it on manual dispatch also
+lets a reviewer trigger it and watch it run. Adding a schedule is three lines of
+YAML when it becomes a running service rather than a demo.
 
 **Accepted coupling.** Bronze lives in a declarative pipeline, so only that
 pipeline can write those tables, and a full refresh of bronze is a full refresh
