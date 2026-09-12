@@ -41,7 +41,7 @@ was not good enough and the work was taken over by hand, how databricks DABs hel
 - [The data](#the-data)
 - [The medallion layers](#the-medallion-layers)
 - [CI/CD and environments](#cicd-and-environments)
-- [How it looks on Databricks](#how-it-looks-on-databricks)
+- [How it looks](#how-it-looks)
 - [Repo map](#repo-map)
 - [Design decisions and gotchas](#design-decisions-and-gotchas)
 - [Trade-offs](#trade-offs)
@@ -513,27 +513,38 @@ Two Free Edition realities:
   `pause_status: PAUSED`. Unpausing is a deliberate, per-environment step.
 
 
-## How it looks on Databricks
+## How it looks
 
 The quest asks for screenshots of the pipeline, the tables, and the output for
 each of the three analytical questions, since reviewers may not have workspace
 access. All of it below, end to end.
 
-### Source fetch, on a GitHub runner
+<div align="center">
+<img src="https://img.shields.io/badge/On%20GitHub-1f2328?style=for-the-badge&logo=github&logoColor=white" alt="On GitHub" height="34">
+</div>
 
-Manual dispatch with an environment selector, so the same workflow lands into
-`dev`, `stage` or `prod`.
+#### Source fetch — dispatch with an environment selector
+
+The same workflow lands into `dev`, `stage` or `prod`.
 
 ![Source fetch workflow runs and the environment selector](docs/images/source-fetch-git-action.png)
 
-A single run: checkout, uv, dependencies, then the fetcher itself. **The whole
+#### A single run
+
+Checkout, uv, dependencies, then the fetcher itself. **The whole
 thing finishes in under a minute** — 40 seconds of that is the fetch step
 landing all 12 BLS files plus the population document into the volume, and it is
 the only part that touches the public internet.
 
 ![A source fetch run landing into prod](docs/images/source-fetch-landing.png)
 
-### Bronze
+---
+
+<div align="center">
+<img src="https://img.shields.io/badge/On%20Databricks-FF3621?style=for-the-badge&logo=databricks&logoColor=white" alt="On Databricks" height="34">
+</div>
+
+#### Bronze
 
 Eleven Auto Loader streaming tables, one per BLS file plus DataUSA population,
 each reading its own landing directory. Serverless, parameterised by `env` and
@@ -541,7 +552,7 @@ each reading its own landing directory. Serverless, parameterised by `env` and
 
 ![Bronze declarative pipeline graph and run details](docs/images/bronze-dp-pipeline.png)
 
-### Silver and gold
+#### Silver and gold
 
 One pipeline covering both layers, resolving the dependency graph itself: each
 bronze table flows through a typed intermediate view into a deduplicated silver
@@ -550,7 +561,7 @@ dataset and visible in the run summary.
 
 ![Silver and gold declarative pipeline graph and run details](docs/images/silver-gold-dp-pipeline.png)
 
-### Three environments, one workspace
+#### Three environments, one workspace
 
 Every job and pipeline exists three times over: `stage_` and `prod_` deployed by
 CI, and a `[dev l_zwicky]` copy alongside them.
@@ -579,7 +590,7 @@ half-finished chart ever appearing in front of a consumer.
 
 ![The dashboard deployed in dev, stage and prod](docs/images/dashboards-env-stage-prod-environments.png)
 
-### Answering three questions
+#### Answering three questions
 
 **Question 1 — mean and standard deviation of the annual US population,
 2013 to 2018.** Read straight off the counters, with the year count confirming
@@ -603,7 +614,7 @@ gap in the chart.
 
 ![Quarterly values and population by year](docs/images/dashboard-question3.png)
 
-### Genie on the gold layer
+#### Genie on the gold layer
 
 Gold feeds a Genie space, so a non-technical reader can ask why the chart looks
 the way it does and get an answer grounded in the data rather than guessing.
