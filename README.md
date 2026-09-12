@@ -163,15 +163,12 @@ that condition is removed.
 **Nothing triggers anything else.**
 
 - **Sourcing** triggers nothing downstream.
-- **Bronze** checks the landing volume for new files on its own schedule, rather
-  than being told about them.
-- **Silver and gold** checks bronze's tables on its own schedule, rather than
-  waiting for a bronze run to finish.
+- **Bronze** checks the landing volume for new files on its own schedule
+- **Silver and gold** checks bronze's tables on its own schedule, optimized for cost and downstream latency requirements
 
 Two things that buys: each stage's **cadence can be tuned to what it actually
-needs** — silver and gold faster or slower than ingestion, without touching
-ingestion — and **any stage can be re-run alone**, which is what makes debugging
-and backfills cheap.
+needs** — silver and gold slower or equal to ingestion leaving flexibility for
+cost and downstream latency requirements. 
 
 ---
 
