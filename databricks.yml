@@ -61,11 +61,16 @@ targets:
       env: stage
     # Schedules live on the target, not the resource file, so dev stays manual.
     # All schedules ship PAUSED: unpause deliberately, per environment.
+    #
+    # Source data (BLS pr.txt, Major Sector Productivity and Costs) updates
+    # "near the beginning of the second and third month of each quarter" --
+    # i.e. Feb/Mar, May/Jun, Aug/Sep, Nov/Dec. Day-of-month 7 gives BLS a
+    # safety margin past "near the beginning" before we ingest.
     resources:
       jobs:
         declarative_bronze_ingestion_job:
           schedule:
-            quartz_cron_expression: "0 0 1 * * ?"
+            quartz_cron_expression: "0 0 1 7 2,3,5,6,8,9,11,12 ?"
             timezone_id: "UTC"
             pause_status: PAUSED
         # An hour after bronze: Free Edition runs one pipeline at a time, and
@@ -74,7 +79,7 @@ targets:
         # doesn't wait on or get triggered by bronze; it's timed not to race it.
         declarative_silver_gold_job:
           schedule:
-            quartz_cron_expression: "0 0 2 * * ?"
+            quartz_cron_expression: "0 0 2 7 2,3,5,6,8,9,11,12 ?"
             timezone_id: "UTC"
             pause_status: PAUSED
 
@@ -89,15 +94,17 @@ targets:
         level: CAN_MANAGE
     variables:
       env: prod
+    # See stage's comment above for why these land on day 7 of Feb/Mar,
+    # May/Jun, Aug/Sep, Nov/Dec: it matches BLS's actual pr.txt update cadence.
     resources:
       jobs:
         declarative_bronze_ingestion_job:
           schedule:
-            quartz_cron_expression: "0 0 3 * * ?"
+            quartz_cron_expression: "0 0 3 7 2,3,5,6,8,9,11,12 ?"
             timezone_id: "UTC"
             pause_status: PAUSED
         declarative_silver_gold_job:
           schedule:
-            quartz_cron_expression: "0 0 4 * * ?"
+            quartz_cron_expression: "0 0 4 7 2,3,5,6,8,9,11,12 ?"
             timezone_id: "UTC"
             pause_status: PAUSED
