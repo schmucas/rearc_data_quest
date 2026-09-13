@@ -151,7 +151,7 @@ by running the failing call in the workspace rather than trusting a summary.
 
 Full detail, with diagrams, in [README.md](README.md#the-architecture).
 
-## What would be different for a real client
+## What would be different for a platform build
 
 - **Catalog-bound workspaces** — bind each catalog to its own workspace so dev
   cannot write prod at all.
@@ -187,8 +187,6 @@ Full detail, with diagrams, in [README.md](README.md#the-architecture).
   new BLS column lands in bronze, but silver selects explicit columns, so it
   never reaches silver or gold. Nothing breaks — which is exactly the problem:
   the drift is silent. **Genie Zero Ops** would be perfect for this.
-- **Data volume** — ~5 MB here, so gold fully refreshes. At scale: incremental
-  gold and clustering tuned to real access patterns.
 
 ## Retrospective
 
