@@ -147,18 +147,31 @@ by running the failing call in the workspace rather than trusting a summary.
   a shared utils wheel and reusing across projects — something a SQL string
   cannot offer. Both implementations sit in every gold file.
 - **Bronze and silver/gold are separate pipelines**, so either can be redeployed,
-  re-run or rescheduled without the other.
+  re-run and run on different cadence.
 
 Full detail, with diagrams, in [README.md](README.md#the-architecture).
 
 ## What would be different for a real client
 
 - **Catalog-bound workspaces** — bind each catalog to its own workspace so dev
-  cannot read prod at all, rather than relying on naming discipline.
+  cannot write prod at all.
+- **Ingestion belongs on the data platform, not in CI.** The GitHub Actions
+  runner here is a workaround for Free Edition's egress block, not a pattern.
+  The cost is not the Python — it is the second CI system, the second secrets
+  store, and the second place to look when something breaks.
+- **Prefer managed ingestion over a hand-built fetcher.** A Lakeflow Connect
+  connector first where one exists, then a third-party tool like Fivetran, and
+  a custom fetcher last. BLS is a genuine exception — a directory of flat files
+  behind a bot-blocking policy, which no connector covers — but the general
+  case rarely justifies the maintenance a hand-built pipeline accrues. Managed
+  ingestion is bought for the maintenance and the connector catalog, not to be
+  cheaper per row.
 - **Access management in a separate infra repo** — Terraform owning grants,
   groups and service principals, reviewed independently of pipeline code.
-- **RBAC on gold** — a read-only analyst role with no access below the gold
-  layer.
+- **Service principal + OAuth M2M for CI/CD**, not a PAT tied to a personal
+  account. Free Edition has no account console, so OAuth M2M isn't available
+  and PAT auth in Actions is the workaround here.
+- **ABAC on medallion** — fine grained access controll across medallion.
 - **PII handling** — classification, masking and row filters, tighter retention.
   Irrelevant for public BLS and Census data; mandatory the moment client data
   lands in the same platform.
@@ -173,9 +186,7 @@ Full detail, with diagrams, in [README.md](README.md#the-architecture).
 - **Schema drift needs detection, not just tolerance.** `addNewColumns` means a
   new BLS column lands in bronze, but silver selects explicit columns, so it
   never reaches silver or gold. Nothing breaks — which is exactly the problem:
-  the drift is silent. A real deployment needs a check comparing bronze's schema
-  against what silver expects (and alerting on non-null `_rescued_data`), or a
-  Genie space over bronze to surface it with near-zero ops.
+  the drift is silent. **Genie Zero Ops** would be perfect for this.
 - **Data volume** — ~5 MB here, so gold fully refreshes. At scale: incremental
   gold and clustering tuned to real access patterns.
 
