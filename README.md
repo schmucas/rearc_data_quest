@@ -294,7 +294,7 @@ from them.
 | **0** | **Landing** | UC volume + `source_manifest` | Immutable raw bytes, plus an append-only audit row per fetch attempt |
 | **1** | **Bronze** | 11 streaming tables | Auto Loader, raw exactly as landed, everything `STRING`, provenance columns only |
 | **2** | **Silver** | 10 tables | Typed, trimmed, deduplicated with SCD Type 1 change flows |
-| **3** | **Gold** | 3 materialized views | The three analytical answers, PySpark primary with a Spark SQL alternative beside it |
+| **3** | **Gold** | 3 materialized views | The three analytical answers, SQL primary with a PySpark alternative beside it |
 | **4** | **Dashboard** | AI/BI (Lakeview) | The answers, readable without workspace access |
 
 Bronze and silver/gold are **separate pipelines**, so either can be redeployed,
@@ -377,8 +377,8 @@ the fetcher's memory of what it saw last time and a fully queryable audit trail.
   `best_year_per_quarter` flagged independently per series-and-quarter slot.
 - Both per-series views join population by year generically rather than a
   series-specific view, since population applies the same way to any series.
-- Each analysis is implemented in PySpark (primary, feeds the table) and
-  Spark SQL (documented alternative).
+- Each analysis is implemented in Spark SQL (primary, feeds the table) and
+  PySpark (documented alternative).
 - Own pipeline and job (`declarative_silver_gold_job`), decoupled from bronze.
 
 **Dashboard** (`resources/dashboard.yml` + `dashboards/rearc_gold.lvdash.json`):
@@ -652,7 +652,7 @@ sourcing/                 the fetcher, runs on a GitHub runner, not on Databrick
   config.py               env, catalog_prefix, warehouse resolution
 src/bronze/               raw landing tables, one per BLS file + DataUSA
 src/silver/               typed, deduplicated tables, one per bronze source
-src/gold/                 gold materialized views, PySpark + SQL implementations
+src/gold/                 gold materialized views, SQL primary + PySpark alternative
 dashboards/               Lakeview dashboard JSON, deployed via resources/dashboard.yml
 src/setup/                catalogs, schemas, volumes, manifest DDL
 src/maintenance/          OPTIMIZE across all schemas, optional VACUUM
@@ -680,7 +680,7 @@ on Databricks compute, and nothing it imports is available there.
 | DataUSA lands as one VARIANT column | `singleVariantColumn` preserves the response as-is. Nothing is parsed into fields, so there is no `_rescued_data` column to populate |
 | Every bronze table sets `cluster_by_auto=True` | Databricks picks clustering keys from observed query patterns instead of a fixed declaration |
 | Silver dedups with Auto CDC, not a window function | `dp.create_auto_cdc_flow`, SCD Type 1, sequenced by `_ingested_at` is what actually collapses bronze's stacked snapshots after a restatement |
-| Gold implements every analysis twice | PySpark is the primary that feeds the table; the Spark SQL version sits beside it as real runnable code, per the quest's ask |
+| Gold implements every analysis twice | SQL is the primary that feeds the table — easier for a BI or analyst reader to trust than a DataFrame chain. Upstream is the reverse: bronze and silver are PySpark, because that is where logic repeats across sources and is worth extracting into a shared utils wheel and reusing across projects, which a SQL string cannot offer. The PySpark version sits beside each gold query as real runnable code, per the quest's ask |
 | `value_per_quarter` stays separate from `agg_value_per_year` | Different grains. Merging them risks double-counting in an accidental `SUM`, or forces a discriminator column every downstream query must filter on |
 
 ### What the data does that you would not expect

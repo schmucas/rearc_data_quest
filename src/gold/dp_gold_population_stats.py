@@ -16,11 +16,11 @@ END_YEAR = 2018
 
 
 def _population_stats_pyspark():
-    """Population statistics via the DataFrame API (primary).
+    """Population statistics via the DataFrame API (documented alternative).
 
     Returns:
-        Batch DataFrame with one row: year_count, population_mean,
-        population_stddev_samp, population_stddev_pop.
+        Batch DataFrame with the same one row, same column names and types,
+        as _population_stats_sql.
     """
     return (
         spark.read.table(f"{CATALOG}.silver.population")
@@ -35,11 +35,11 @@ def _population_stats_pyspark():
 
 
 def _population_stats_sql():
-    """Population statistics via Spark SQL (documented alternative).
+    """Population statistics via Spark SQL (primary).
 
     Returns:
-        Batch DataFrame with the same one row, same column names and types,
-        as _population_stats_pyspark.
+        Batch DataFrame with one row: year_count, population_mean,
+        population_stddev_samp, population_stddev_pop.
     """
     return spark.sql(f"""
         SELECT
@@ -52,7 +52,7 @@ def _population_stats_sql():
     """)
 
 
-# PySpark is primary. Report population_stddev_pop -- 2013-2018 is the exact
+# SQL is primary. Report population_stddev_pop -- 2013-2018 is the exact
 # set the question asks about, not a sample used to estimate a larger
 # population of years.
 @dp.materialized_view(
@@ -60,4 +60,4 @@ def _population_stats_sql():
     comment="Mean and standard deviation of US population, 2013-2018.",
 )
 def population_stats():
-    return _population_stats_pyspark()
+    return _population_stats_sql()

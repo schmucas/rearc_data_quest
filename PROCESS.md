@@ -112,6 +112,16 @@ downstream trigger was dropped after the justification for it turned out not to
 hold. And a proposal to skip the dual SQL/PySpark implementation was reversed
 after re-reading the assignment, which asks for it explicitly.
 
+**Why SQL ended up primary in gold, not upstream.** Gold's actual audience
+is BI/analyst readers, and a SQL query is what they can read and trust
+without tracing a PySpark DataFrame chain. Bronze and silver are PySpark
+throughout, for the opposite reason: that layer is where configurability
+matters, and where transformation logic actually repeats across sources —
+exactly the kind of thing worth extracting into a shared utils wheel and
+reusing across other repos and projects down the road, which a SQL string
+can't offer. Both implementations still live in every gold file; only the
+primary/alternative labels in the comment above each decorator flipped.
+
 Every load-bearing claim was checked against the source rather than accepted:
 `Q05`'s meaning was confirmed arithmetically from actual rows, the unit ambiguity
 behind `value` came from `pr.duration`, and the egress limitation was confirmed
