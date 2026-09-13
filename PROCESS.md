@@ -8,6 +8,8 @@ Architecture, trade-offs and data caveats live in
 ## Contents
 
 - [AI usage](#ai-usage)
+- [Architecture decisions](#architecture-decisions)
+- [What would be different for a real client](#what-would-be-different-for-a-real-client)
 - [Retrospective](#retrospective)
 
 ---
@@ -112,22 +114,70 @@ downstream trigger was dropped after the justification for it turned out not to
 hold. And a proposal to skip the dual SQL/PySpark implementation was reversed
 after re-reading the assignment, which asks for it explicitly.
 
-**Why SQL ended up primary in gold, not upstream.** Gold's actual audience
-is BI/analyst readers, and a SQL query is what they can read and trust
-without tracing a PySpark DataFrame chain. Bronze and silver are PySpark
-throughout, for the opposite reason: that layer is where configurability
-matters, and where transformation logic actually repeats across sources,
-exactly the kind of thing worth extracting into a shared utils wheel and
-reusing across other repos and projects down the road, which a SQL string
-can't offer. Both implementations still live in every gold file; only the
-primary/alternative labels in the comment above each decorator flipped.
-
 Every load-bearing claim was checked against the source rather than accepted:
 `Q05`'s meaning was confirmed arithmetically from actual rows, the unit ambiguity
 behind `value` came from `pr.duration`, and the egress limitation was confirmed
 by running the failing call in the workspace rather than trusting a summary.
 
 ---
+
+---
+
+## Architecture decisions
+
+- **Landing is immutable.** Neither source appends — both restate history — so
+  every changed fetch writes a new timestamped path and nothing is overwritten.
+  Re-running is safe by construction: recovery is a re-run, and an immediate
+  re-run is a no-op.
+- **Idempotency lives in a manifest**, not in file timestamps: conditional `GET`
+  for BLS, body hash for DataUSA, one append-only row per item per run.
+- **Ordering is the failure design** — download, then upload, then write the row.
+  Reversed, a failed upload would mark a file as landed and it would never be
+  fetched again.
+- **Bronze keeps data exactly as it arrives** — no trimming, casting or
+  renaming, everything `STRING`, provenance columns only. That principle is what
+  forced Delta column mapping for BLS's space-padded headers.
+- **Silver types and deduplicates** with SCD Type 1 auto CDC sequenced by
+  `_ingested_at`, because bronze stacks every snapshot ever landed and both
+  sources restate history.
+- **Gold is SQL-primary; upstream is PySpark.** Gold's audience is BI and analyst
+  readers, and a SQL query is what they can read and trust without tracing a
+  DataFrame chain. Bronze and silver are PySpark throughout for the opposite
+  reason: that is where logic repeats across sources and is worth extracting into
+  a shared utils wheel and reusing across projects — something a SQL string
+  cannot offer. Both implementations sit in every gold file.
+- **Bronze and silver/gold are separate pipelines**, so either can be redeployed,
+  re-run or rescheduled without the other.
+
+Full detail, with diagrams, in [README.md](README.md#the-architecture).
+
+## What would be different for a real client
+
+- **Catalog-bound workspaces** — bind each catalog to its own workspace so dev
+  cannot read prod at all, rather than relying on naming discipline.
+- **Access management in a separate infra repo** — Terraform owning grants,
+  groups and service principals, reviewed independently of pipeline code.
+- **RBAC on gold** — a read-only analyst role with no access below the gold
+  layer.
+- **PII handling** — classification, masking and row filters, tighter retention.
+  Irrelevant for public BLS and Census data; mandatory the moment client data
+  lands in the same platform.
+- **Shared utils as a versioned wheel in its own repo**, reused across projects,
+  instead of a project-local `src/utils/`.
+- **Compute policies** — constrain sizing and enforce tagging, so cost is
+  attributable before it is a surprise.
+- **A cost dashboard** off system tables, split by environment and pipeline, with
+  budget alerts.
+- **Monitoring** — alerting on expectation failures and on fetch errors, rather
+  than a red build nobody is watching.
+- **Schema drift needs detection, not just tolerance.** `addNewColumns` means a
+  new BLS column lands in bronze, but silver selects explicit columns, so it
+  never reaches silver or gold. Nothing breaks — which is exactly the problem:
+  the drift is silent. A real deployment needs a check comparing bronze's schema
+  against what silver expects (and alerting on non-null `_rescued_data`), or a
+  Genie space over bronze to surface it with near-zero ops.
+- **Data volume** — ~5 MB here, so gold fully refreshes. At scale: incremental
+  gold and clustering tuned to real access patterns.
 
 ## Retrospective
 
