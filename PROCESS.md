@@ -8,6 +8,8 @@ Architecture, trade-offs and data caveats live in
 ## Contents
 
 - [AI usage](#ai-usage)
+- [Architecture decisions](#architecture-decisions)
+- [What would be different for a real client](#what-would-be-different-for-a-real-client)
 - [Retrospective](#retrospective)
 
 ---
@@ -38,16 +40,16 @@ server is invoked at project level with the environment already loaded.
 
 Read the BLS layout documentation at
 [`pr.txt`](https://download.bls.gov/pub/time.series/pr/pr.txt) directly, then had
-Claude research the rest — the access policy behind the 403, the DataUSA
+Claude research the rest: the access policy behind the 403, the DataUSA
 endpoint's shape. Reading the provider's own docs first is what surfaced 
 the `Q05` and unit-heterogeneity issues; neither is visible from the data alone.
 
 ### Architecture before implementation
 
-Drafted the whole architecture in Claude Cowork before any code existed —
+Drafted the whole architecture in Claude Cowork before any code existed:
 sourcing strategy, landing layout, manifest design, failure ordering. That
-conversation is where the Free Edition egress wall was found and tested out and the design
-moved off-platform, which would have been frustating to discover mid-build.
+conversation is where the Free Edition egress wall was tested out and the ingest design
+moved off-platform.
 
 ### Staged delivery
 
@@ -58,15 +60,15 @@ documentation.
 
 1. Draft the Claude Code prompt in Claude Cowork as a markdown file, and
    iterate on it there until it is precise.
-2. Hand it to Claude Code in **plan mode on Sonnet at extra-high effort** —
+2. Hand it to Claude Code in **plan mode on Sonnet at extra-high effort**,
    keeping token usage and context window under
    control before any code is written.
 3. Once the plan is agreed: implement, test locally, deploy to `dev`.
 4. Validate `dev` twice, independently:
-   - **By hand** — the UI for catalog, volumes, tables and pipelines; the SQL
+   - **By hand**: the UI for catalog, volumes, tables and pipelines; the SQL
      editor and notebooks for results, with Genie used to draft validation
      queries quickly.
-   - **By Claude Code** — via the Databricks CLI, the SQL MCP server, and the
+   - **By Claude Code**: via the Databricks CLI, the SQL MCP server, and the
      Databricks AI dev kit.
 5. Iterate with Claude Code on gaps until satisfied.
 6. Small, self-contained fixes go to a **separate session** rather than the main
@@ -81,8 +83,8 @@ documentation.
 
 The stage-by-stage loop above held for everything except the dashboard.
 
-Claude Code built a first version from the prompt, and it was not good enough —
-it looked like a dashboard but did not actually answer the quest's three
+Claude Code built a first version from the prompt, and it was not good enough.
+It looked like a dashboard but did not actually answer the quest's three
 questions in a way a reviewer could read off it. Several rounds of iteration did
 not close the gap.
 
@@ -92,12 +94,12 @@ went, and had Claude Code rework the gold materialized views underneath to match
 what the presentation actually needed. Then I pulled the workspace version back
 over the local file with a forced `databricks bundle generate dashboard`, pushed
 it, adjusted again in the UI, regenerated again, and repeated until it was
-finished — then committed the result.
+finished, then committed the result.
 
 Two things worth taking from that. **The UI is the authoring surface for a
 visual artifact and the bundle is the version-control surface**; round-tripping
 through `bundle generate` is the honest loop, not hand-authoring Lakeview JSON.
-And the split of competence was clear — AI was genuinely useful for the data
+And the split of competence was clear: AI was genuinely useful for the data
 work beneath the dashboard, and not a substitute for my own judgement about what
 a reader needs to see.
 
@@ -105,22 +107,12 @@ a reader needs to see.
 
 The pattern that mattered: AI proposed, I verified against primary sources.
 Several early design proposals were over-engineered and were cut back
-deliberately — a carry-forward scheme in the manifest, an `etag` column and a
+deliberately: a carry-forward scheme in the manifest, an `etag` column and a
 `changed` flag all disappeared once filtering to the last successful fetch
 proved simpler and more honest. An initial suggestion to couple the fetcher to a
 downstream trigger was dropped after the justification for it turned out not to
 hold. And a proposal to skip the dual SQL/PySpark implementation was reversed
 after re-reading the assignment, which asks for it explicitly.
-
-**Why SQL ended up primary in gold, not upstream.** Gold's actual audience
-is BI/analyst readers, and a SQL query is what they can read and trust
-without tracing a PySpark DataFrame chain. Bronze and silver are PySpark
-throughout, for the opposite reason: that layer is where configurability
-matters, and where transformation logic actually repeats across sources —
-exactly the kind of thing worth extracting into a shared utils wheel and
-reusing across other repos and projects down the road, which a SQL string
-can't offer. Both implementations still live in every gold file; only the
-primary/alternative labels in the comment above each decorator flipped.
 
 Every load-bearing claim was checked against the source rather than accepted:
 `Q05`'s meaning was confirmed arithmetically from actual rows, the unit ambiguity
@@ -128,6 +120,64 @@ behind `value` came from `pr.duration`, and the egress limitation was confirmed
 by running the failing call in the workspace rather than trusting a summary.
 
 ---
+
+---
+
+## Architecture decisions
+
+- **Landing is immutable.** Neither source appends — both restate history — so
+  every changed fetch writes a new timestamped path and nothing is overwritten.
+  Re-running is safe by construction: recovery is a re-run, and an immediate
+  re-run is a no-op.
+- **Idempotency lives in a manifest**, not in file timestamps: conditional `GET`
+  for BLS, body hash for DataUSA, one append-only row per item per run.
+- **Ordering is the failure design** — download, then upload, then write the row.
+  Reversed, a failed upload would mark a file as landed and it would never be
+  fetched again.
+- **Bronze keeps data exactly as it arrives** — no trimming, casting or
+  renaming, everything `STRING`, provenance columns only. That principle is what
+  forced Delta column mapping for BLS's space-padded headers.
+- **Silver types and deduplicates** with SCD Type 1 auto CDC sequenced by
+  `_ingested_at`, because bronze stacks every snapshot ever landed and both
+  sources restate history.
+- **Gold is SQL-primary; upstream is PySpark.** Gold's audience is BI and analyst
+  readers, and a SQL query is what they can read and trust without tracing a
+  DataFrame chain. Bronze and silver are PySpark throughout for the opposite
+  reason: that is where logic repeats across sources and is worth extracting into
+  a shared utils wheel and reusing across projects — something a SQL string
+  cannot offer. Both implementations sit in every gold file.
+- **Bronze and silver/gold are separate pipelines**, so either can be redeployed,
+  re-run or rescheduled without the other.
+
+Full detail, with diagrams, in [README.md](README.md#the-architecture).
+
+## What would be different for a real client
+
+- **Catalog-bound workspaces** — bind each catalog to its own workspace so dev
+  cannot read prod at all, rather than relying on naming discipline.
+- **Access management in a separate infra repo** — Terraform owning grants,
+  groups and service principals, reviewed independently of pipeline code.
+- **RBAC on gold** — a read-only analyst role with no access below the gold
+  layer.
+- **PII handling** — classification, masking and row filters, tighter retention.
+  Irrelevant for public BLS and Census data; mandatory the moment client data
+  lands in the same platform.
+- **Shared utils as a versioned wheel in its own repo**, reused across projects,
+  instead of a project-local `src/utils/`.
+- **Compute policies** — constrain sizing and enforce tagging, so cost is
+  attributable before it is a surprise.
+- **A cost dashboard** off system tables, split by environment and pipeline, with
+  budget alerts.
+- **Monitoring** — alerting on expectation failures and on fetch errors, rather
+  than a red build nobody is watching.
+- **Schema drift needs detection, not just tolerance.** `addNewColumns` means a
+  new BLS column lands in bronze, but silver selects explicit columns, so it
+  never reaches silver or gold. Nothing breaks — which is exactly the problem:
+  the drift is silent. A real deployment needs a check comparing bronze's schema
+  against what silver expects (and alerting on non-null `_rescued_data`), or a
+  Genie space over bronze to surface it with near-zero ops.
+- **Data volume** — ~5 MB here, so gold fully refreshes. At scale: incremental
+  gold and clustering tuned to real access patterns.
 
 ## Retrospective
 
@@ -137,10 +187,10 @@ restriction, but I would not put a CI runner on the critical path of a
 production ingestion. It is sufficient here, and the source cadence makes it
 comfortably so: per
 [`pr.txt`](https://download.bls.gov/pub/time.series/pr/pr.txt), BLS publishes
-this data quarterly — four times a year.
+this data quarterly (four times a year).
 
 The sharpest edge of that choice is **observability**. The fetcher emits no logs
-at all — no prints, no structured logging, and no job summary step — so the
+at all (no prints, no structured logging, and no job summary step), so the
 Actions run shows step names and an exit code and nothing about what actually
 happened to each of the thirteen items. All of that detail lives in the manifest
 table, which means **debugging a failed fetch means leaving GitHub and querying
@@ -148,8 +198,8 @@ Databricks**, and a failure early enough to happen *before* the manifest is
 reachable (an unset contact address, a bad token, an unresolvable warehouse)
 leaves only a raw traceback. On a platform-native ingestion this would come free
 from the job's own run history and event log; here it had to be given up, and
-the cheap fix — a `GITHUB_STEP_SUMMARY` table of per-item outcomes, which the PR
-workflow already does for its checks — is the first thing I would add.
+the cheap fix (a `GITHUB_STEP_SUMMARY` table of per-item outcomes, which the PR
+workflow already does for its checks) is the first thing I would add.
 
 **Bronze keeps the data exactly as it arrives**, which was a deliberate
 principle rather than a shortcut: no trimming, no casting, no renaming. That
@@ -160,9 +210,9 @@ Delta column mapping so the raw header lands untouched, and trimming becomes
 silver's job.
 
 **I should have read more documentation and trusted Claude less.** The two
-issues that would have quietly produced plausible wrong answers — `Q05` being an
+issues that would have quietly produced plausible wrong answers (`Q05` being an
 annual average, and `value` meaning three different units depending on
-`duration_code` — are both plainly documented in the BLS files and invisible in
+`duration_code`) are both plainly documented in the BLS files and invisible in
 the data itself. Both were eventually caught, but by verification rather than by
 having read carefully in the first place.
 
