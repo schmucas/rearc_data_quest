@@ -1,4 +1,4 @@
-# `sourcing/` — the source fetcher
+# `sourcing/` — The Source Fetcher
 
 Pulls the full contents of the BLS productivity folder and the DataUSA
 population endpoint into a Unity Catalog volume, and records every fetch
@@ -8,23 +8,23 @@ Runs on a GitHub Actions runner, never on Databricks compute.
 
 ## Contents
 
-- [One run, end to end](#one-run-end-to-end)
-- [Module map](#module-map)
-- [Getting past BLS's bot blocking](#getting-past-blss-bot-blocking)
-- [Not hammering the source](#not-hammering-the-source)
-- [Why it is not scheduled](#why-it-is-not-scheduled)
-- [Never hardcoding filenames](#never-hardcoding-filenames)
-- [Change detection](#change-detection)
-- [Added, changed, removed](#added-changed-removed)
-- [Where files land](#where-files-land)
-- [The manifest](#the-manifest)
-- [Failure model](#failure-model)
+- [One Run, End to End](#one-run-end-to-end)
+- [Module Map](#module-map)
+- [Getting Past BLS's Bot Blocking](#getting-past-blss-bot-blocking)
+- [Not Hammering the Source](#not-hammering-the-source)
+- [Why It Is Not Scheduled](#why-it-is-not-scheduled)
+- [Never Hardcoding Filenames](#never-hardcoding-filenames)
+- [Change Detection](#change-detection)
+- [Added, Changed, Removed](#added-changed-removed)
+- [Where Files Land](#where-files-land)
+- [The Manifest](#the-manifest)
+- [Failure Model](#failure-model)
 - [Configuration](#configuration)
-- [Databricks APIs used](#databricks-apis-used)
+- [Databricks APIs Used](#databricks-apis-used)
 - [Tests](#tests)
-- [Known gaps](#known-gaps)
+- [Known Gaps](#known-gaps)
 
-## One run, end to end
+## One Run, End to End
 
 ```
 resolve config  →  read last known state from the manifest
@@ -42,7 +42,7 @@ resolve config  →  read last known state from the manifest
 A steady-state run writes 13 manifest rows (12 BLS files plus the DataUSA
 document) and transfers almost nothing, since every BLS file answers `304`.
 
-## Module map
+## Module Map
 
 | File | Responsibility |
 |---|---|
@@ -56,7 +56,7 @@ document) and transfers almost nothing, since every BLS file answers `304`.
 
 Entry point: `uv run python -m sourcing --env dev`.
 
-## Getting past BLS's bot blocking
+## Getting Past BLS's Bot Blocking
 
 - BLS returns `403 Forbidden` to any request without a `User-Agent` carrying
   contact information. Their
@@ -77,7 +77,7 @@ Entry point: `uv run python -m sourcing --env dev`.
 - **Local development:** set `BLS_CONTACT_EMAIL` in `.envrc` (see
   `.envrc.example`). `.envrc` is gitignored, so it never lands in the repo.
 
-## Not hammering the source
+## Not Hammering the Source
 
 BLS is a public government server being asked for a favour. Four things keep
 the load negligible:
@@ -100,7 +100,7 @@ retried in place. That's safe, since the item retries on the next run by
 itself (its stored `last_modified` was never advanced), but it's the first
 thing to add for production use.
 
-## Why it is not scheduled
+## Why It Is Not Scheduled
 
 The workflow is `workflow_dispatch` only. A `schedule:` block would be three
 lines, and it's deliberately left out because this is a demo repo, not a
@@ -119,7 +119,7 @@ running service:
 For a real deployment: one `schedule:` block plus retry handling, cadenced to
 BLS's quarterly release, not a daily timer.
 
-## Never hardcoding filenames
+## Never Hardcoding Filenames
 
 - Every run re-parses the directory listing. No filename appears anywhere in
   the module.
@@ -133,7 +133,7 @@ BLS's quarterly release, not a daily timer.
   ignored: the `Last-Modified` response header is authoritative, and depending
   on the HTML's date format would be fragility for no gain.
 
-## Change detection
+## Change Detection
 
 The two sources need different mechanisms, since they're different kinds of
 thing:
@@ -150,7 +150,7 @@ reformatted. Rewriting an HTTP date can easily produce a header the server
 doesn't recognise, and the failure mode is silent: `200` every time, and the
 same bytes land forever.
 
-## Added, changed, removed
+## Added, Changed, Removed
 
 | Source-side event | What happens |
 |---|---|
@@ -163,7 +163,7 @@ Removal is handled by not breaking rather than by writing a tombstone: a
 deliberate consequence of an immutable landing zone, where what was true at
 the time it was fetched stays recorded.
 
-## Where files land
+## Where Files Land
 
 ```
 /Volumes/<catalog_prefix>_ingest/<env>/landing/<source>/<dataset>/<filename>__<ingest_ts>
@@ -193,7 +193,7 @@ Three decisions in that shape:
 `upload()` calls `create_directory` on the parent before writing, since a new
 dataset's directory doesn't exist on its first run.
 
-## The manifest
+## The Manifest
 
 `<catalog_prefix>_ingest.<env>.source_manifest`: Delta,
 `delta.appendOnly = true`, DDL owned by `src/setup/environment_setup.ipynb`.
@@ -236,7 +236,7 @@ than carrying values forward from an earlier one.
 All values travel as **named SQL parameters** (`:name`), never interpolated
 into statement text.
 
-## Failure model
+## Failure Model
 
 Per item, always:
 
@@ -277,7 +277,7 @@ there (every target sets it explicitly), so it comes from the flag instead.
 Locally, `BLS_CONTACT_EMAIL` and the Databricks credentials are set in
 `.envrc` (gitignored); see `.envrc.example` for the template.
 
-## Databricks APIs used
+## Databricks APIs Used
 
 Both through `databricks-sdk`'s `WorkspaceClient`, which picks up
 `DATABRICKS_HOST` / `DATABRICKS_TOKEN` from the environment.
@@ -298,7 +298,7 @@ cover the listing parser (including parent-directory exclusion and
 absolute-href basenames), conditional-GET outcomes, hash comparison, landing
 path construction, manifest row shaping, and orchestration control flow.
 
-## Known gaps
+## Known Gaps
 
 - No retry, backoff, or `Retry-After` handling on transient failures.
 - No post-upload size verification against `content_length`.

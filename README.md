@@ -37,19 +37,19 @@ was not good enough and the work was taken over by hand, how databricks DABs hel
 
 ## Contents
 
-- [The architecture](#the-architecture)
-- [The data](#the-data)
-- [The medallion layers](#the-medallion-layers)
-- [CI/CD and environments](#cicd-and-environments)
-- [How it looks](#how-it-looks)
-- [Repo map](#repo-map)
-- [Design decisions and gotchas](#design-decisions-and-gotchas)
+- [The Architecture](#the-architecture)
+- [The Data](#the-data)
+- [The Medallion Layers](#the-medallion-layers)
+- [CI/CD and Environments](#cicd-and-environments)
+- [How It Looks](#how-it-looks)
+- [Repo Map](#repo-map)
+- [Design Decisions and Gotchas](#design-decisions-and-gotchas)
 - [Trade-offs](#trade-offs)
 - [Reference](#reference)
 
-## The architecture
+## The Architecture
 
-### The constraint that shapes everything
+### The Constraint that Shapes Everything
 
 **Databricks Free Edition blocks outbound internet** from serverless compute to
 all but a small allowlist of trusted domains. Neither BLS nor DataUSA is on it,
@@ -141,7 +141,7 @@ flowchart LR
   linkStyle default stroke:#4b5563,stroke-width:3px
 ```
 
-### Three stages, deliberately decoupled
+### Three Stages, Deliberately Decoupled
 
 | # | Stage | Runs on | Triggered by |
 |---|---|---|---|
@@ -174,7 +174,7 @@ cost and downstream latency requirements.
 
 ---
 
-### Environment Separation - dev, stage, prod
+### Environment Separation - Dev, Stage, Prod
 
 Everything is **replicated across `dev`, `stage` and `prod`** — separate sourcing,
 catalogs, separate landing volume and manifest, separate pipelines, jobs and
@@ -185,12 +185,12 @@ Deployment is **GitHub Actions driving DABs** — PR checks, merge to `main`
 deploys `dev`, a release-candidate tag deploys `stage`, a release tag deploys
 `prod` behind an approval gate.
 
-> Detail: **[CI/CD and environments](#cicd-and-environments)** ·
+> Detail: **[CI/CD and Environments](#cicd-and-environments)** ·
 > **[what it looks like deployed](#three-environments-one-workspace)**
 
 ---
 
-### 1 · The fetcher, outside Databricks
+### 1 · The Fetcher, Outside Databricks
 
 [`sourcing/`](sourcing/README.md) is a small Python package that runs on a
 GitHub Actions runner.
@@ -283,7 +283,7 @@ immutable, so **recovery is a re-run**, and an immediate re-run is a no-op.
 
 ---
 
-### 2 · Everything else, on Databricks
+### 2 · Everything Else, on Databricks
 
 One Databricks Asset Bundle, three targets, **no catalog name hardcoded
 anywhere** — `env` and `catalog_prefix` are passed down and everything derives
@@ -302,7 +302,7 @@ re-run or rescheduled without the other.
 
 ---
 
-## The data
+## The Data
 
 **Sources.**
 
@@ -348,7 +348,7 @@ the fetcher's memory of what it saw last time and a fully queryable audit trail.
 > **[`sourcing/README.md`](sourcing/README.md#the-manifest)**
 
 
-## The medallion layers
+## The Medallion Layers
 
 **Bronze** (`resources/dp_bronze_ingestion.yml` + `src/bronze/`):
 - One raw Delta table per BLS file, plus one for DataUSA population.
@@ -397,7 +397,7 @@ the fetcher's memory of what it saw last time and a fully queryable audit trail.
 - Not scheduled on any target.
 
 
-## CI/CD and environments
+## CI/CD and Environments
 
 **Environments.** Three environments on one workspace, separated at the catalog
 level in Unity Catalog. They are bundle targets, not git branches: the same
@@ -513,7 +513,7 @@ Two Free Edition realities:
   `pause_status: PAUSED`. Unpausing is a deliberate, per-environment step.
 
 
-## How it looks
+## How It Looks
 
 The quest asks for screenshots of the pipeline, the tables, and the output for
 each of the three analytical questions, since reviewers may not have workspace
@@ -523,7 +523,7 @@ access. All of it below, end to end.
 <img src="https://img.shields.io/badge/On%20GitHub-1f2328?style=for-the-badge&logo=github&logoColor=white" alt="On GitHub" height="34">
 </div>
 
-#### Every pull request is gated
+#### Every Pull Request Is Gated
 
 `ruff`, `bundle validate` against the dev target, and the full unit-test suite,
 finishing in **19 seconds**. The last step renders a summary table onto the
@@ -531,7 +531,7 @@ run's Summary tab, so a reviewer sees the result without opening logs.
 
 ![PR checks: lint, bundle validate, tests and a published job summary](docs/images/github-pr-checks.png)
 
-#### Prod deploys wait for approval
+#### Prod Deploys Wait for Approval
 
 A release tag starts `Deploy → Prod`, and the run sits at **Waiting** until
 someone approves the `production` environment. Nothing reaches prod
@@ -540,13 +540,13 @@ comment are recorded on the run itself.
 
 ![The production environment approval gate holding a tagged deploy](docs/images/github-prod-approval-gate.png)
 
-#### Source fetch — dispatch with an environment selector
+#### Source Fetch — Dispatch with an Environment Selector
 
 The same workflow lands into `dev`, `stage` or `prod`.
 
 ![Source fetch workflow runs and the environment selector](docs/images/source-fetch-git-action.png)
 
-#### A single run
+#### A Single Run
 
 Checkout, uv, dependencies, then the fetcher itself. **The whole thing finishes
 in under a minute** — 40 seconds of that is the fetch step landing all 12 BLS
@@ -569,7 +569,7 @@ each reading its own landing directory. Serverless, parameterised by `env` and
 
 ![Bronze declarative pipeline graph and run details](docs/images/bronze-dp-pipeline.png)
 
-#### Silver and gold
+#### Silver and Gold
 
 One pipeline covering both layers, resolving the dependency graph itself: each
 bronze table flows through a typed intermediate view into a deduplicated silver
@@ -578,7 +578,7 @@ dataset and visible in the run summary.
 
 ![Silver and gold declarative pipeline graph and run details](docs/images/silver-gold-dp-pipeline.png)
 
-#### Three environments, one workspace
+#### Three Environments, One Workspace
 
 Every job and pipeline exists three times over: `stage_` and `prod_` deployed by
 CI, and a `[dev l_zwicky]` copy alongside them.
@@ -607,7 +607,7 @@ half-finished chart ever appearing in front of a consumer.
 
 ![The dashboard deployed in dev, stage and prod](docs/images/dashboards-env-stage-prod-environments.png)
 
-#### Answering three questions
+#### Answering Three Questions
 
 **Question 1 — mean and standard deviation of the annual US population,
 2013 to 2018.** Read straight off the counters, with the year count confirming
@@ -631,14 +631,14 @@ gap in the chart.
 
 ![Quarterly values and population by year](docs/images/dashboard-question3.png)
 
-#### Genie on the gold layer
+#### Genie on the Gold Layer
 
 Gold feeds a Genie space, so a non-technical reader can ask why the chart looks
 the way it does and get an answer grounded in the data rather than guessing.
 
 ![Genie explaining the missing population years](docs/images/dashboard-genie-interaction.png)
 
-## Repo map
+## Repo Map
 
 ```
 databricks.yml            bundle definition: env + catalog_prefix, 3 targets
@@ -664,9 +664,9 @@ tests/                    bundle guardrails + sourcing unit tests (no Spark)
 The fetcher lives outside `src/` on purpose: nothing in `sourcing/` ever runs
 on Databricks compute, and nothing it imports is available there.
 
-## Design decisions and gotchas
+## Design Decisions and Gotchas
 
-### Why it is built this way
+### Why It Is Built This Way
 
 | Decision | Why |
 |---|---|
@@ -683,7 +683,7 @@ on Databricks compute, and nothing it imports is available there.
 | Gold implements every analysis twice | SQL is the primary that feeds the table — easier for a BI or analyst reader to trust than a DataFrame chain. Upstream is the reverse: bronze and silver are PySpark, because that is where logic repeats across sources and is worth extracting into a shared utils wheel and reusing across projects, which a SQL string cannot offer. The PySpark version sits beside each gold query as real runnable code, per the quest's ask |
 | `value_per_quarter` stays separate from `agg_value_per_year` | Different grains. Merging them risks double-counting in an accidental `SUM`, or forces a discriminator column every downstream query must filter on |
 
-### What the data does that you would not expect
+### What the Data Does that You Would Not Expect
 
 | Caveat | Detail |
 |---|---|
@@ -693,7 +693,7 @@ on Databricks compute, and nothing it imports is available there.
 | **`pr.data.0.Current` is a subset of `pr.data.1.AllData`** | 1995 onward against 1987 onward, identical schema. Landed and bronzed because it is what the source publishes, deliberately unmodelled in silver |
 | **`pr.txt` is stale on the base year** | Prose says 2005 = 100, `pr.duration` says 2017 = 100. `base_year` on `pr.series` is authoritative per series |
 
-### Things that bit us
+### Things that Bit Us
 
 | Gotcha | What to know |
 |---|---|
