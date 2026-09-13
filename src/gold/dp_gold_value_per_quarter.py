@@ -29,13 +29,11 @@ LABEL_EXPR = F.concat_ws(
 
 
 def _value_per_quarter_pyspark():
-    """Every quarter's raw value per series, with population, via the DataFrame API (primary).
+    """Every quarter's raw value per series, with population, via the DataFrame API (documented alternative).
 
     Returns:
-        Batch DataFrame with one row per (series_id, year, period): series_id,
-        the label dimension columns, a composed label, year, period, value,
-        best_year_per_quarter, and population (NULL where population has no
-        row for that year).
+        Batch DataFrame with the same rows, same column names and types, as
+        _value_per_quarter_sql.
     """
     quarterly = (
         spark.read.table(f"{CATALOG}.silver.pr_data")
@@ -88,11 +86,13 @@ def _value_per_quarter_pyspark():
 
 
 def _value_per_quarter_sql():
-    """Every quarter's raw value per series, with population, via Spark SQL (documented alternative).
+    """Every quarter's raw value per series, with population, via Spark SQL (primary).
 
     Returns:
-        Batch DataFrame with the same rows, same column names and types, as
-        _value_per_quarter_pyspark.
+        Batch DataFrame with one row per (series_id, year, period): series_id,
+        the label dimension columns, a composed label, year, period, value,
+        best_year_per_quarter, and population (NULL where population has no
+        row for that year).
     """
     return spark.sql(f"""
         WITH quarterly AS (
@@ -150,10 +150,10 @@ def _value_per_quarter_sql():
     """)
 
 
-# PySpark is primary.
+# SQL is primary.
 @dp.materialized_view(
     name=f"{CATALOG}.gold.value_per_quarter",
     comment="Every quarter's raw value per series, best year per quarter slot flagged, with population.",
 )
 def value_per_quarter():
-    return _value_per_quarter_pyspark()
+    return _value_per_quarter_sql()

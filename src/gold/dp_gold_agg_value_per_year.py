@@ -30,13 +30,11 @@ LABEL_EXPR = F.concat_ws(
 
 
 def _agg_value_per_year_pyspark():
-    """Every year's summed value per series, with population, via the DataFrame API (primary).
+    """Every year's summed value per series, with population, via the DataFrame API (documented alternative).
 
     Returns:
-        Batch DataFrame with one row per (series_id, year): series_id, the
-        label dimension columns, a composed label, year, summed_value,
-        is_best_year, and population (NULL where population has no row for
-        that year).
+        Batch DataFrame with the same rows, same column names and types, as
+        _agg_value_per_year_sql.
     """
     quarterly = (
         spark.read.table(f"{CATALOG}.silver.pr_data")
@@ -89,11 +87,13 @@ def _agg_value_per_year_pyspark():
 
 
 def _agg_value_per_year_sql():
-    """Every year's summed value per series, with population, via Spark SQL (documented alternative).
+    """Every year's summed value per series, with population, via Spark SQL (primary).
 
     Returns:
-        Batch DataFrame with the same rows, same column names and types, as
-        _agg_value_per_year_pyspark.
+        Batch DataFrame with one row per (series_id, year): series_id, the
+        label dimension columns, a composed label, year, summed_value,
+        is_best_year, and population (NULL where population has no row for
+        that year).
     """
     return spark.sql(f"""
         WITH quarterly AS (
@@ -149,10 +149,10 @@ def _agg_value_per_year_sql():
     """)
 
 
-# PySpark is primary.
+# SQL is primary.
 @dp.materialized_view(
     name=f"{CATALOG}.gold.agg_value_per_year",
     comment="Every year's summed Q01-Q04 value per series, best year flagged, with population.",
 )
 def agg_value_per_year():
-    return _agg_value_per_year_pyspark()
+    return _agg_value_per_year_sql()
